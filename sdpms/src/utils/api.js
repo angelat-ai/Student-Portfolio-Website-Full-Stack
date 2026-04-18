@@ -1,6 +1,6 @@
 const BASE = window.location.hostname === 'localhost' 
   ? 'http://127.0.0.1:8000/api' 
-  : 'https://student-digital-portfolio-management-system.vercel.app/api'
+  : 'https://sdpms-backend.onrender.com/api'
 
 function getToken() { return localStorage.getItem('sdpms_access') }
 function setTokens(access, refresh) { localStorage.setItem('sdpms_access', access); localStorage.setItem('sdpms_refresh', refresh) }
