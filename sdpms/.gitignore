@@ -1,0 +1,125 @@
+# =========================
+# Logs
+# =========================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =========================
+# Node / Frontend (React + Vite)
+# =========================
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# =========================
+# Python / Django Backend
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.sqlite3
+db.sqlite3
+*.db
+migrations/
+!migrations/__init__.py
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+pyvenv.cfg
+
+# Python distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# =========================
+# Editor / OS files
+# =========================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# =========================
+# Testing
+# =========================
+coverage/
+.nyc_output/
+*.cover
+.coverage
+.coverage.*
+.coverage
+htmlcov/
+
+# =========================
+# Build outputs
+# =========================
+*.pid
+*.seed
+*.pid.lock
+*.log
+*.tmp
+*.temp
+
+# =========================
+# Misc
+# =========================
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.bak
+*.cache
+*.temp

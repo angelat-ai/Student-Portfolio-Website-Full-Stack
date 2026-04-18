@@ -1,0 +1,199 @@
+.discover-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.discover-post {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.discover-post-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--card-border);
+  transition: background 0.15s;
+}
+
+.discover-post-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.discover-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.discover-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.discover-author {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.discover-meta {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  margin-top: 1px;
+}
+
+.discover-thumb {
+  width: 100%;
+  max-height: 360px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #1a3a8f, #2563eb44);
+}
+
+.discover-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  max-height: 360px;
+}
+
+.discover-thumb-placeholder {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.15);
+  font-size: 3rem;
+}
+
+.discover-body {
+  padding: 14px 16px;
+}
+
+.discover-title {
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 6px;
+}
+
+.discover-desc {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+
+.discover-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.discover-links {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.discover-actions {
+  display: flex;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--card-border);
+}
+
+.discover-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+  padding: 9px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 0.83rem;
+  transition: all 0.15s;
+  font-family: var(--font-body);
+}
+
+.discover-action-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.discover-action-btn.reacted {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.3);
+  color: var(--red);
+}
+
+.discover-comments {
+  margin-top: 14px;
+  border-top: 1px solid var(--card-border);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.discover-comment {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+}
+
+.discover-comment-author {
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: var(--accent-light);
+}
+
+.discover-comment-text {
+  font-size: 0.84rem;
+  color: var(--text);
+}
+
+.discover-comment-date {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.discover-comment-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.discover-comment-form input {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 0.83rem;
+}
+
+.discover-comment-form .btn-primary {
+  padding: 8px 14px;
+  flex-shrink: 0;
+}
