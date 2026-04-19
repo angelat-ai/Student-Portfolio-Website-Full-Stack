@@ -555,7 +555,9 @@ export default function StudentDashboard() {
         if (newest && !newest.is_read) setToastNotif(newest)
       }
       prevNotifCount.current = notifs.length
-    } catch {}
+    } catch (err) {
+      console.error('Failed to load dashboard data:', err)
+    }
   }
 
   useEffect(() => { loadAll() }, [])
@@ -590,6 +592,7 @@ export default function StudentDashboard() {
   async function doUpload(e) {
     e.preventDefault()
     if (!uploadForm.title.trim()) { setUploadFb('⚠ Title is required.'); return }
+    setUploadFb('Uploading...')
     try {
       const payload = {
         title: uploadForm.title, description: uploadForm.description,
@@ -601,10 +604,14 @@ export default function StudentDashboard() {
       }
       await addProject(payload, uploadForm.imageFile)
       setUploadForm(BLANK_UPLOAD)
+      setUploadFb('')
       const projs = await getProjects(true); setAllProjects(projs)
       const st = await getStudentStats(); setStats(st)
       setShowUploadSuccess(true)
-    } catch (err) { setUploadFb('⚠ ' + (err.message || 'Upload failed')) }
+    } catch (err) {
+      console.error('Upload error:', err)
+      setUploadFb('⚠ ' + (err.message || 'Upload failed. Check console.'))
+    }
   }
 
   function openEditProject(p) {
@@ -628,26 +635,65 @@ export default function StudentDashboard() {
       await updateProject(editingProject.id, payload)
       const projs = await getProjects(true); setAllProjects(projs)
       setEditProjectModal(false)
-    } catch {}
+    } catch (err) {
+      console.error('Edit project error:', err)
+      alert('Failed to update project: ' + (err.message || ''))
+    }
   }
 
   async function saveSettings(e) {
     e.preventDefault()
-    try { await updateMe(settingsForm); setSettingsFb('✓ Settings saved!'); setTimeout(()=>setSettingsFb(''), 2500) }
-    catch (err) { setSettingsFb('⚠ ' + err.message) }
+    setSettingsFb('Saving...')
+    try {
+      await updateMe(settingsForm)
+      setSettingsFb('✓ Settings saved!')
+      setTimeout(() => setSettingsFb(''), 2500)
+      const u = await fetchMe()
+      setUser(u)
+    } catch (err) {
+      console.error('Settings save error:', err)
+      setSettingsFb('⚠ ' + (err.message || 'Failed to save'))
+    }
   }
 
   async function saveResume(e) {
     e.preventDefault()
-    try { await saveProfile({ resume_data: resumeData, resume_template: resumeTemplate }); setResumeFb('✓ Saved!'); setTimeout(()=>setResumeFb(''), 2500) } catch {}
+    setResumeFb('Saving...')
+    try {
+      await saveProfile({ resume_data: resumeData, resume_template: resumeTemplate })
+      setResumeFb('✓ Saved!')
+      setTimeout(() => setResumeFb(''), 2500)
+      const prof = await getProfile()
+      setProfile(prof)
+      setResumeData(prof.resume_data || {})
+    } catch (err) {
+      console.error('Resume save error:', err)
+      setResumeFb('⚠ ' + (err.message || 'Failed to save'))
+    }
   }
 
   async function saveAboutMe(e) {
     e.preventDefault()
+    setAboutFb('Saving...')
     try {
-      await saveProfile({ about_bio: aboutData.bio, about_interests: aboutData.interests, about_languages: aboutData.languages, about_github: aboutData.github, about_linkedin: aboutData.linkedin })
-      setAboutFb('✓ Saved!'); setTimeout(()=>setAboutFb(''), 2500)
-    } catch {}
+      await saveProfile({
+        about_bio: aboutData.bio, about_interests: aboutData.interests,
+        about_languages: aboutData.languages, about_github: aboutData.github,
+        about_linkedin: aboutData.linkedin
+      })
+      setAboutFb('✓ Saved!')
+      setTimeout(() => setAboutFb(''), 2500)
+      const prof = await getProfile()
+      setProfile(prof)
+      setAboutData({
+        bio: prof.about_bio || '', interests: prof.about_interests || '',
+        languages: prof.about_languages || '', github: prof.about_github || '',
+        linkedin: prof.about_linkedin || ''
+      })
+    } catch (err) {
+      console.error('About save error:', err)
+      setAboutFb('⚠ ' + (err.message || 'Failed to save'))
+    }
   }
 
   function copyShareLink() {
@@ -709,8 +755,11 @@ export default function StudentDashboard() {
     try {
       if (showImageModal==='cover') { await saveProfile({ cover_data_url: url }); setProfile(p => ({...p, cover_data_url: url})) }
       else { await saveProfile({ avatar_data_url: url }); setProfile(p => ({...p, avatar_data_url: url})) }
-    } catch {}
-    setShowImageModal(null)
+      setShowImageModal(null)
+    } catch (err) {
+      console.error('Image save error:', err)
+      alert('Failed to save image')
+    }
   }
 
   useEffect(() => {
@@ -796,10 +845,22 @@ export default function StudentDashboard() {
           const projs = await getProjects(true); setAllProjects(projs)
           const st = await getStudentStats(); setStats(st)
           setShowFigmaEditor(false); setFigmaInitData(null); nav2('projects')
-        } catch (err) { alert('Failed to save project: ' + err.message) }
+        } catch (err) {
+          console.error('Design project save error:', err)
+          alert('Failed to save project: ' + err.message)
+        }
       } else {
-        try { await savePortfolioDesign(data); setPortfolioDesign(data) } catch {}
-        setShowFigmaEditor(false); setFigmaInitData(null); nav2('editor'); setPortfolioTab('portfolio')
+        try {
+          await savePortfolioDesign(data)
+          setPortfolioDesign(data)
+          setShowFigmaEditor(false)
+          setFigmaInitData(null)
+          nav2('editor')
+          setPortfolioTab('portfolio')
+        } catch (err) {
+          console.error('Portfolio design save error:', err)
+          alert('Failed to save portfolio design')
+        }
       }
     }
     return (
