@@ -8,6 +8,8 @@ import {
   getAnnouncements, addAnnouncement,
   getCategories, addCategory, deleteCategory,
   getAdminStats, getSiteContent, saveSiteContent,
+  getFlaggedContent, resolveFlag, getNotifications, markNotificationsRead,
+  ALL_CATEGORIES,
 } from '../utils/api'
 import './AdminDashboard.css'
 
@@ -19,15 +21,30 @@ function buildCalendar(year, month) {
   return { firstDay, daysInMonth }
 }
 
+function MiniChart({ data, color = '#2563eb' }) {
+  if (!data || data.length === 0) return null
+  const max = Math.max(...data.map(d => d.views), 1)
+  return (
+    <div style={{display:'flex',alignItems:'flex-end',gap:3,height:60}}>
+      {data.slice(-14).map((d,i) => (
+        <div key={i} style={{flex:1,background:d.views>0?color:'rgba(255,255,255,.06)',borderRadius:'3px 3px 0 0',height:`${Math.max((d.views/max)*100,4)}%`,transition:'height .3s'}} title={`${d.date}: ${d.views}`}/>
+      ))}
+    </div>
+  )
+}
+
 export default function AdminDashboard() {
   const nav = useNavigate()
   const [section, setSection] = useState('dashboard')
-  const [stats, setStats] = useState({ users:0, projects:0, views:0, flags:0 })
+  const [stats, setStats] = useState({ users:0, projects:0, views:0, flags:0, users_today:0, projects_today:0, views_by_day:[], category_stats:[] })
   const [users, setUsers] = useState([])
   const [templates, setTemplates] = useState([])
   const [trashedTemplates, setTrashedTemplates] = useState([])
   const [categories, setCategories] = useState([])
   const [announcements, setAnnouncements] = useState([])
+  const [flagged, setFlagged] = useState([])
+  const [notifications, setNotifications] = useState([])
+  const [showNotifPanel, setShowNotifPanel] = useState(false)
   const [templateFilter, setTemplateFilter] = useState('all')
   const [userSearch, setUserSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -46,6 +63,7 @@ export default function AdminDashboard() {
   const [calMonth, setCalMonth] = useState(new Date().getMonth())
   const [calDay, setCalDay] = useState(null)
   const [showCal, setShowCal] = useState(false)
+  const [calView, setCalView] = useState('calendar')
   const [showFigmaEditor, setShowFigmaEditor] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState(null)
   const [tplNameModal, setTplNameModal] = useState(null)
@@ -55,17 +73,13 @@ export default function AdminDashboard() {
   const [tplDeleteConfirm, setTplDeleteConfirm] = useState(null)
 
   const dateStr = new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' })
+  const today = new Date()
 
   async function loadAll() {
     try {
-      const [st, us, tpl, trash, cats, ann, content] = await Promise.all([
-        getAdminStats(),
-        adminGetUsers(),
-        getTemplates(),
-        getTrashedTemplates(),
-        getCategories(),
-        getAnnouncements(),
-        getSiteContent(),
+      const [st, us, tpl, trash, cats, ann, content, flags, notifs] = await Promise.all([
+        getAdminStats(), adminGetUsers(), getTemplates(), getTrashedTemplates(),
+        getCategories(), getAnnouncements(), getSiteContent(), getFlaggedContent(), getNotifications(),
       ])
       setStats(st)
       setUsers(us)
@@ -74,6 +88,8 @@ export default function AdminDashboard() {
       setCategories(cats)
       setAnnouncements(ann)
       setContentForm(content)
+      setFlagged(flags)
+      setNotifications(notifs)
     } catch {}
   }
 
@@ -96,25 +112,16 @@ export default function AdminDashboard() {
     e.preventDefault()
     if (!userForm.name || !userForm.email) { setUserFb('Name and email are required.'); return }
     try {
-      if (userModal === 'add') {
-        await adminCreateUser(userForm)
-      } else {
-        await adminUpdateUser(userModal, userForm)
-      }
+      if (userModal === 'add') await adminCreateUser(userForm)
+      else await adminUpdateUser(userModal, userForm)
       const us = await adminGetUsers()
       setUsers(us)
       setUserModal(null)
-    } catch (err) {
-      setUserFb(err.message || 'Error saving user.')
-    }
+    } catch (err) { setUserFb(err.message || 'Error saving user.') }
   }
 
   async function toggleSuspend(id) {
-    try {
-      await adminToggleSuspend(id)
-      const us = await adminGetUsers()
-      setUsers(us)
-    } catch {}
+    try { await adminToggleSuspend(id); const us = await adminGetUsers(); setUsers(us) } catch {}
   }
 
   async function doSendAnnouncement(e) {
@@ -125,20 +132,14 @@ export default function AdminDashboard() {
       const ann = await getAnnouncements()
       setAnnouncements(ann)
       setAnnForm({ title:'', message:'', audience:'all' })
-      setAnnFb('✓ Announcement sent to students!')
+      setAnnFb('✓ Announcement sent!')
       setTimeout(() => setAnnFb(''), 3000)
-    } catch (err) {
-      setAnnFb('error:' + err.message)
-    }
+    } catch (err) { setAnnFb('error:' + err.message) }
   }
 
   async function doSaveContent(e) {
     e.preventDefault()
-    try {
-      await saveSiteContent(contentForm)
-      setContentFb('✓ Content saved!')
-      setTimeout(() => setContentFb(''), 3000)
-    } catch {}
+    try { await saveSiteContent(contentForm); setContentFb('✓ Content saved!'); setTimeout(() => setContentFb(''), 3000) } catch {}
   }
 
   async function doAddCategory(e) {
@@ -150,17 +151,11 @@ export default function AdminDashboard() {
       setCategories(cats)
       setCatModal(false)
       setCatForm({ name:'', icon:'fa-solid fa-folder', desc:'' })
-    } catch (err) {
-      setCatFb(err.message)
-    }
+    } catch (err) { setCatFb(err.message) }
   }
 
   async function doDeleteCategory(id) {
-    try {
-      await deleteCategory(id)
-      const cats = await getCategories()
-      setCategories(cats)
-    } catch {}
+    try { await deleteCategory(id); const cats = await getCategories(); setCategories(cats) } catch {}
   }
 
   function openCreateTemplate() { setEditingTemplate(null); setShowFigmaEditor(true) }
@@ -178,29 +173,13 @@ export default function AdminDashboard() {
     if (!tplMeta.name) return
     const allEls = Object.values(tplSaveData.elements || {}).flat()
     const thumbnail = generateThumbnail(allEls, tplSaveData.bg)
-    const payload = {
-      name: tplMeta.name,
-      category: tplMeta.category,
-      desc: tplMeta.desc,
-      preview_icon: 'fa-solid fa-palette',
-      color: '#2563eb',
-      elements: allEls,
-      pages: tplSaveData.pages,
-      bg: tplSaveData.bg,
-      thumbnail,
-    }
+    const payload = { name:tplMeta.name, category:tplMeta.category, desc:tplMeta.desc, preview_icon:'fa-solid fa-palette', color:'#2563eb', elements:allEls, pages:tplSaveData.pages, bg:tplSaveData.bg, thumbnail }
     try {
-      if (editingTemplate) {
-        await updateTemplate(editingTemplate.id, payload)
-      } else {
-        await createTemplate(payload)
-      }
+      if (editingTemplate) await updateTemplate(editingTemplate.id, payload)
+      else await createTemplate(payload)
       const [tpl, trash] = await Promise.all([getTemplates(), getTrashedTemplates()])
-      setTemplates(tpl)
-      setTrashedTemplates(trash)
-      setTplNameModal(false)
-      setTplSaveData(null)
-      setEditingTemplate(null)
+      setTemplates(tpl); setTrashedTemplates(trash)
+      setTplNameModal(false); setTplSaveData(null); setEditingTemplate(null)
     } catch {}
   }
 
@@ -219,7 +198,7 @@ export default function AdminDashboard() {
         } else if (el.type!=='triangle'&&el.type!=='line'&&el.fill&&!el.fill.startsWith('url')) {
           ctx.fillStyle = el.fill
           if (el.type==='circle') { ctx.beginPath(); ctx.ellipse((el.x+el.w/2)*scaleX,(el.y+el.h/2)*scaleY,(el.w/2)*scaleX,(el.h/2)*scaleY,0,0,Math.PI*2); ctx.fill() }
-          else { const r = el.type==='rounded'?8:el.type==='frame'?4:0; ctx.beginPath(); ctx.roundRect(el.x*scaleX,el.y*scaleY,el.w*scaleX,el.h*scaleY,r); ctx.fill() }
+          else { const r=el.type==='rounded'?8:el.type==='frame'?4:0; ctx.beginPath(); ctx.roundRect(el.x*scaleX,el.y*scaleY,el.w*scaleX,el.h*scaleY,r); ctx.fill() }
         }
       })
       return canvas.toDataURL()
@@ -227,10 +206,14 @@ export default function AdminDashboard() {
   }
 
   const { firstDay, daysInMonth } = buildCalendar(calYear, calMonth)
-  const today = new Date()
   const activeTemplates = templates.filter(t => !t.deleted)
   const filteredTemplates = templateFilter==='all' ? activeTemplates : activeTemplates.filter(t => t.category===templateFilter)
   const TPL_CATS = ['all','marketing','business','video','social','education','presentation','poster','resume','logo']
+  const unreadNotifs = notifications.filter(n => !n.is_read).length
+
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
+  const dataMap = {}
+  ;(stats.views_by_day||[]).forEach(d => { dataMap[d.date] = d.views })
 
   const sideItems = [
     { key:'dashboard', icon:'gauge', label:'Dashboard', group:'Overview' },
@@ -260,6 +243,33 @@ export default function AdminDashboard() {
 
   return (
     <div className="ad-wrap">
+      {showNotifPanel && (
+        <div style={{position:'fixed',top:60,right:16,width:340,background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:14,boxShadow:'0 16px 48px rgba(0,0,0,.5)',zIndex:3000,overflow:'hidden'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'13px 16px',borderBottom:'1px solid var(--card-border)'}}>
+            <span style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:'.95rem'}}>Notifications</span>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={async()=>{await markNotificationsRead();const n=await getNotifications();setNotifications(n)}} style={{background:'none',border:'none',color:'var(--accent-light)',fontSize:'.72rem',cursor:'pointer'}}>Mark all read</button>
+              <button onClick={()=>setShowNotifPanel(false)} style={{background:'none',border:'none',color:'var(--text-dim)',cursor:'pointer'}}><i className="fa-solid fa-xmark"/></button>
+            </div>
+          </div>
+          <div style={{maxHeight:380,overflowY:'auto'}}>
+            {notifications.length===0&&<div style={{padding:'28px',textAlign:'center',color:'var(--text-dim)',fontSize:'.84rem'}}>No notifications yet</div>}
+            {notifications.map((n,i)=>(
+              <div key={n.id||i} style={{padding:'11px 16px',borderBottom:'1px solid var(--card-border)',display:'flex',gap:10,alignItems:'flex-start',background:n.is_read?'none':'rgba(37,99,235,.05)'}}>
+                <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(37,99,235,.15)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,color:'var(--accent-light)',fontSize:'.82rem'}}>
+                  <i className={`fa-solid fa-${n.notif_type==='like'?'heart':n.notif_type==='comment'?'comment':'eye'}`}/>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:'.82rem',marginBottom:2}}>{n.message}</div>
+                  <div style={{fontSize:'.68rem',color:'var(--text-dim)'}}>{new Date(n.created_at).toLocaleString()}</div>
+                </div>
+                {!n.is_read&&<div style={{width:7,height:7,borderRadius:'50%',background:'var(--accent)',flexShrink:0,marginTop:5}}/>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <header className="ad-topnav">
         <div className="ad-topnav-left">
           <div className="ad-logo">SDMS</div>
@@ -268,6 +278,10 @@ export default function AdminDashboard() {
           </nav>
         </div>
         <div className="ad-topnav-right">
+          <button className="sd-notif-btn" onClick={()=>setShowNotifPanel(o=>!o)} title="Notifications" style={{background:'none',border:'none',color:'var(--text-muted)',fontSize:'1.1rem',cursor:'pointer',padding:'6px 8px',borderRadius:8,position:'relative'}}>
+            <i className="fa-regular fa-bell"/>
+            {unreadNotifs>0&&<span style={{position:'absolute',top:2,right:2,background:'var(--red)',color:'#fff',fontSize:'.64rem',fontWeight:700,padding:'2px 5px',borderRadius:10,minWidth:16,textAlign:'center'}}>{unreadNotifs}</span>}
+          </button>
           <span className="ad-role-badge">Admin</span>
           <button className="ad-cal-btn" onClick={()=>setShowCal(true)} title="Calendar"><i className="fa-regular fa-calendar" /></button>
         </div>
@@ -303,9 +317,9 @@ export default function AdminDashboard() {
               </div>
               <div className="ad-stats-grid">
                 {[
-                  { icon:'user', color:'#e879f9', val:stats.users, label:'Total Users', sub:'0 Today' },
-                  { icon:'folder', color:'#f9a8d4', val:stats.projects, label:'Projects Uploaded', sub:'0 Today' },
-                  { icon:'eye', color:'#38bdf8', val:stats.views, label:'Portfolio Views', sub:'0 today' },
+                  { icon:'user', color:'#e879f9', val:stats.users, label:'Total Users', sub:`+${stats.users_today||0} Today` },
+                  { icon:'folder', color:'#f9a8d4', val:stats.projects, label:'Projects Uploaded', sub:`+${stats.projects_today||0} Today` },
+                  { icon:'eye', color:'#38bdf8', val:stats.views, label:'Portfolio Views', sub:'All time' },
                   { icon:'flag', color:'#f87171', val:stats.flags, label:'Flagged Content', sub:'Needs Review' },
                 ].map(s=>(
                   <div className="ad-stat-card" key={s.label}>
@@ -316,8 +330,56 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
+
+              {stats.views_by_day && stats.views_by_day.length > 0 && (
+                <div className="ad-card" style={{marginBottom:18}}>
+                  <h3 className="ad-card-title">Views Over Time (Last 14 Days)</h3>
+                  <MiniChart data={stats.views_by_day} color="#2563eb"/>
+                </div>
+              )}
+
+              {stats.category_stats && stats.category_stats.length > 0 && (
+                <div className="ad-card" style={{marginBottom:18}}>
+                  <h3 className="ad-card-title">Projects by Category</h3>
+                  <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:8}}>
+                    {stats.category_stats.map((c,i)=>{
+                      const max = stats.category_stats[0]?.count || 1
+                      return (
+                        <div key={i} style={{display:'flex',alignItems:'center',gap:10}}>
+                          <span style={{width:130,fontSize:'.78rem',color:'var(--text-muted)',flexShrink:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.category||'Uncategorized'}</span>
+                          <div style={{flex:1,background:'rgba(255,255,255,.06)',borderRadius:4,height:10,overflow:'hidden'}}>
+                            <div style={{width:`${(c.count/max)*100}%`,height:'100%',background:'var(--accent)',borderRadius:4,transition:'width .4s'}}/>
+                          </div>
+                          <span style={{fontSize:'.76rem',color:'var(--accent-light)',minWidth:24,textAlign:'right'}}>{c.count}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="ad-dashboard-bottom">
-                <div className="ad-card"><h3 className="ad-card-title">Moderation Queue</h3><div className="empty-state" style={{padding:'20px 0'}}><i className="fa-solid fa-check-circle"/><p>No items to review</p></div></div>
+                <div className="ad-card">
+                  <h3 className="ad-card-title">Moderation Queue</h3>
+                  {flagged.length===0 ? (
+                    <div className="empty-state" style={{padding:'20px 0'}}><i className="fa-solid fa-check-circle"/><p>No items to review</p></div>
+                  ) : (
+                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                      {flagged.slice(0,5).map((f,i)=>(
+                        <div key={f.id||i} style={{background:'rgba(248,113,113,.06)',border:'1px solid rgba(248,113,113,.2)',borderRadius:9,padding:'10px 13px'}}>
+                          <div style={{fontSize:'.78rem',color:'var(--red)',marginBottom:4}}><i className="fa-solid fa-triangle-exclamation"/> {f.reason}</div>
+                          <div style={{fontSize:'.83rem',marginBottom:4}}>"{f.comment_text}"</div>
+                          <div style={{fontSize:'.72rem',color:'var(--text-dim)',marginBottom:8}}>by {f.author_name} on "{f.project_title}"</div>
+                          <div style={{display:'flex',gap:7}}>
+                            <button className="btn-outline" style={{fontSize:'.72rem',padding:'4px 10px'}} onClick={async()=>{await resolveFlag(f.id,'resolve');const fl=await getFlaggedContent();setFlagged(fl);const st=await getAdminStats();setStats(st)}}>Dismiss</button>
+                            <button className="btn-danger" style={{fontSize:'.72rem',padding:'4px 10px'}} onClick={async()=>{await resolveFlag(f.id,'delete');const fl=await getFlaggedContent();setFlagged(fl);const st=await getAdminStats();setStats(st)}}>Delete Comment</button>
+                          </div>
+                        </div>
+                      ))}
+                      {flagged.length>5&&<div style={{fontSize:'.78rem',color:'var(--text-dim)',textAlign:'center'}}>+{flagged.length-5} more in Reports</div>}
+                    </div>
+                  )}
+                </div>
                 <div className="ad-card">
                   <h3 className="ad-card-title">Activity Feed</h3>
                   {announcements.slice(0,5).map((a,i)=>(
@@ -329,6 +391,7 @@ export default function AdminDashboard() {
                   {announcements.length===0&&<div className="empty-state" style={{padding:'20px 0'}}><i className="fa-solid fa-list"/><p>No recent activity</p></div>}
                 </div>
               </div>
+
               <div className="ad-card">
                 <div className="ad-um-header">
                   <h3 className="ad-card-title">User Management</h3>
@@ -473,7 +536,8 @@ export default function AdminDashboard() {
 
           {section==='categories' && (
             <div className="ad-section">
-              <div className="ad-section-header"><div><h2 className="ad-section-title">Categories</h2><p className="ad-section-sub">Manage portfolio categories</p></div><button className="btn-primary" onClick={()=>setCatModal(true)}><i className="fa-solid fa-plus"/> Add Category</button></div>
+              <div className="ad-section-header"><div><h2 className="ad-section-title">Categories</h2><p className="ad-section-sub">Manage portfolio categories — these appear as choices for students</p></div><button className="btn-primary" onClick={()=>setCatModal(true)}><i className="fa-solid fa-plus"/> Add Category</button></div>
+              {categories.length===0&&<div className="empty-state"><i className="fa-solid fa-list"/><p>No categories yet. Add some!</p></div>}
               {categories.map((c,i)=>(
                 <div className="ad-cat-item" key={c.id||i}>
                   <div className="ad-cat-info">
@@ -487,7 +551,33 @@ export default function AdminDashboard() {
           )}
 
           {section==='reports' && (
-            <div className="ad-section"><div className="ad-section-header"><div><h2 className="ad-section-title">Reports</h2></div></div><div className="ad-placeholder"><i className="fa-solid fa-chart-line"/><p>Reports & Analytics coming soon.</p></div></div>
+            <div className="ad-section">
+              <div className="ad-section-header"><div><h2 className="ad-section-title">Reports & Moderation</h2></div></div>
+              <h3 style={{fontFamily:'var(--font-display)',fontSize:'1rem',fontWeight:700,marginBottom:14,color:'var(--red)'}}>Flagged Content ({flagged.length})</h3>
+              {flagged.length===0 ? (
+                <div className="empty-state"><i className="fa-solid fa-shield-halved"/><p>No flagged content. All clear!</p></div>
+              ) : (
+                <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                  {flagged.map((f,i)=>(
+                    <div key={f.id||i} style={{background:'var(--card-bg)',border:'1px solid rgba(248,113,113,.3)',borderRadius:12,padding:'14px 16px'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+                        <div>
+                          <span style={{fontSize:'.72rem',color:'var(--red)',background:'rgba(248,113,113,.1)',padding:'2px 8px',borderRadius:20,marginRight:8}}><i className="fa-solid fa-triangle-exclamation"/> {f.reason}</span>
+                          <span style={{fontSize:'.72rem',color:'var(--text-dim)'}}>Detected: {f.detected_words}</span>
+                        </div>
+                        <span style={{fontSize:'.68rem',color:'var(--text-dim)'}}>{new Date(f.created_at).toLocaleString()}</span>
+                      </div>
+                      <div style={{fontSize:'.88rem',marginBottom:4,padding:'8px 12px',background:'rgba(255,255,255,.03)',borderRadius:7,borderLeft:'3px solid rgba(248,113,113,.4)'}}>"{f.comment_text}"</div>
+                      <div style={{fontSize:'.74rem',color:'var(--text-dim)',marginBottom:10}}>by <strong style={{color:'var(--text-muted)'}}>{f.author_name}</strong> on project "<strong style={{color:'var(--text-muted)'}}>{f.project_title}</strong>"</div>
+                      <div style={{display:'flex',gap:8}}>
+                        <button className="btn-outline" style={{fontSize:'.76rem',padding:'5px 12px'}} onClick={async()=>{await resolveFlag(f.id,'resolve');const fl=await getFlaggedContent();setFlagged(fl);const st=await getAdminStats();setStats(st)}}>✓ Dismiss</button>
+                        <button className="btn-danger" style={{fontSize:'.76rem',padding:'5px 12px'}} onClick={async()=>{await resolveFlag(f.id,'delete');const fl=await getFlaggedContent();setFlagged(fl);const st=await getAdminStats();setStats(st)}}><i className="fa-solid fa-trash"/> Delete Comment</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {section==='settings' && (
@@ -500,7 +590,7 @@ export default function AdminDashboard() {
         <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)setTplDeleteConfirm(null)}}>
           <div className="modal-box">
             <div className="modal-header"><h3><i className="fa-solid fa-triangle-exclamation" style={{color:'var(--red)',marginRight:8}}/>Confirm Delete</h3><button className="modal-close" onClick={()=>setTplDeleteConfirm(null)}><i className="fa-solid fa-xmark"/></button></div>
-            <div className="modal-body"><p style={{color:'var(--text-muted)'}}>Move this template to trash? You can restore it from the Trash Bin.</p></div>
+            <div className="modal-body"><p style={{color:'var(--text-muted)'}}>Move this template to trash?</p></div>
             <div className="modal-footer">
               <button className="btn-cancel" onClick={()=>setTplDeleteConfirm(null)}>Cancel</button>
               <button className="btn-danger" onClick={async()=>{await deleteTemplate(tplDeleteConfirm,'soft');const[tpl,trash]=await Promise.all([getTemplates(),getTrashedTemplates()]);setTemplates(tpl);setTrashedTemplates(trash);setTplDeleteConfirm(null)}}>Move to Trash</button>
@@ -512,7 +602,13 @@ export default function AdminDashboard() {
       {showCal && (
         <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)setShowCal(false)}}>
           <div className="modal-box">
-            <div className="modal-header"><h3><i className="fa-regular fa-calendar"/> Calendar</h3><button className="modal-close" onClick={()=>setShowCal(false)}><i className="fa-solid fa-xmark"/></button></div>
+            <div className="modal-header">
+              <h3><i className="fa-regular fa-calendar"/> Calendar</h3>
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                {calDay&&<button onClick={()=>setCalDay(null)} style={{background:'none',border:'none',color:'var(--accent-light)',fontSize:'.76rem',cursor:'pointer'}}>← Back to today</button>}
+                <button className="modal-close" onClick={()=>setShowCal(false)}><i className="fa-solid fa-xmark"/></button>
+              </div>
+            </div>
             <div className="modal-body">
               <div className="ad-cal-nav">
                 <button onClick={()=>{let m=calMonth-1,y=calYear;if(m<0){m=11;y--}setCalMonth(m);setCalYear(y)}}>&#8249;</button>
@@ -524,11 +620,31 @@ export default function AdminDashboard() {
                 {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`}/>)}
                 {Array(daysInMonth).fill(null).map((_,i)=>{
                   const d=i+1
+                  const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+                  const views=dataMap[ds]||0
                   const isToday=d===today.getDate()&&calMonth===today.getMonth()&&calYear===today.getFullYear()
-                  return <div key={d} className={`ad-cal-day${isToday?' today':''}${calDay===d?' selected':''}`} onClick={()=>setCalDay(d)}>{d}</div>
+                  const isSel=calDay===d
+                  return (
+                    <div key={d} className={`ad-cal-day${isToday?' today':''}${isSel?' selected':''}`} onClick={()=>setCalDay(d)} style={{position:'relative'}}>
+                      {d}
+                      {views>0&&<div style={{width:4,height:4,borderRadius:'50%',background:'var(--accent)',margin:'2px auto 0'}}/>}
+                    </div>
+                  )
                 })}
               </div>
-              {calDay&&<div className="ad-cal-day-view"><h4>{MONTHS[calMonth]} {calDay}, {calYear}</h4><p style={{color:'var(--text-dim)',fontSize:'.84rem'}}>No events for this day.</p></div>}
+              {calDay&&(()=>{
+                const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(calDay).padStart(2,'0')}`
+                const views=dataMap[ds]||0
+                const isFuture=ds>todayStr
+                return (
+                  <div className="ad-cal-day-view">
+                    <h4>{MONTHS[calMonth]} {calDay}, {calYear}</h4>
+                    {isFuture ? <p style={{color:'var(--text-dim)',fontSize:'.84rem'}}>🔮 Cannot predict future data</p>
+                      : views===0 ? <p style={{color:'var(--text-dim)',fontSize:'.84rem'}}>No activity on this day.</p>
+                      : <p style={{color:'var(--accent-light)',fontSize:'.84rem'}}>👁 {views} total views on this day</p>}
+                  </div>
+                )
+              })()}
             </div>
             <div className="modal-footer"><button className="btn-cancel" onClick={()=>setShowCal(false)}>Close</button></div>
           </div>
@@ -570,8 +686,16 @@ export default function AdminDashboard() {
             <form onSubmit={doAddCategory}>
               <div className="modal-body">
                 <div className="field-group"><label>Category Name *</label><input value={catForm.name} onChange={e=>setCatForm(f=>({...f,name:e.target.value}))} placeholder="e.g. IT, Arts"/></div>
-                <div className="field-group"><label>Icon (FA class)</label><input value={catForm.icon} onChange={e=>setCatForm(f=>({...f,icon:e.target.value}))} placeholder="fa-solid fa-laptop"/></div>
+                <div className="field-group"><label>Icon (FA class)</label><input value={catForm.icon} onChange={e=>setCatForm(f=>({...f,icon:e.target.value}))} placeholder="fa-solid fa-laptop"/><div style={{marginTop:6,fontSize:'.72rem',color:'var(--text-dim)'}}>Preview: <i className={catForm.icon}/></div></div>
                 <div className="field-group"><label>Description</label><textarea rows={2} value={catForm.desc} onChange={e=>setCatForm(f=>({...f,desc:e.target.value}))}/></div>
+                <div style={{marginTop:10,padding:'10px',background:'rgba(37,99,235,.06)',borderRadius:8}}>
+                  <div style={{fontSize:'.72rem',color:'var(--text-dim)',marginBottom:6}}>Quick add from presets:</div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                    {ALL_CATEGORIES.slice(0,20).map(c=>(
+                      <button type="button" key={c} onClick={()=>setCatForm(f=>({...f,name:c}))} style={{fontSize:'.68rem',padding:'2px 8px',borderRadius:20,border:'1px solid var(--card-border)',background:'none',color:'var(--text-muted)',cursor:'pointer'}}>{c}</button>
+                    ))}
+                  </div>
+                </div>
                 {catFb&&<div className="save-feedback error">{catFb}</div>}
               </div>
               <div className="modal-footer">

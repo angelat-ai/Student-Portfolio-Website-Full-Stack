@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getTopProjects, getDiscover, getSiteContent } from '../utils/api'
+import { getTopProjects, getDiscover, getSiteContent, incrementProjectViews } from '../utils/api'
 import './LandingPage.css'
 
 const FEATURES = [
@@ -12,7 +12,7 @@ const FEATURES = [
   { icon: 'star', color: '#4361ee', bg: 'rgba(67,97,238,0.12)', title: 'Instructor Feedback', desc: 'Instructors can leave grades and written feedback directly on your projects — all in one place.' },
 ]
 
-const CAT_ICONS = { Arts: 'palette', IT: 'laptop-code', Engineering: 'gear', Nursing: 'heart-pulse', Certificate: 'certificate', Creative: 'wand-magic-sparkles' }
+const CAT_ICONS = { Arts: 'palette', IT: 'laptop-code', Engineering: 'gear', Nursing: 'heart-pulse', Certificate: 'certificate', Creative: 'wand-magic-sparkles', Design: 'pen-ruler', Photography: 'camera', Music: 'music', Film: 'film' }
 
 export default function LandingPage() {
   const nav = useNavigate()
@@ -21,6 +21,7 @@ export default function LandingPage() {
   const [activeFilter, setActiveFilter] = useState('All')
   const [categories, setCategories] = useState(['All'])
   const [content, setContent] = useState({})
+  const [hoveredId, setHoveredId] = useState(null)
 
   useEffect(() => {
     getTopProjects().then(data => {
@@ -42,6 +43,10 @@ export default function LandingPage() {
   }, [activeFilter])
 
   const displayed = activeFilter === 'All' ? discoverProjects : discoverProjects.filter(p => p.category === activeFilter)
+
+  function handleProjectClick(p) {
+    incrementProjectViews(p.id).catch(() => {})
+  }
 
   return (
     <div className="land-wrap">
@@ -104,16 +109,23 @@ export default function LandingPage() {
               {displayed.map((p, i) => {
                 const imgSrc = p.effective_image || p.image_url || ''
                 return (
-                  <div className="land-project-card" key={p.id || i}>
+                  <div className="land-project-card" key={p.id || i} onClick={()=>handleProjectClick(p)} onMouseEnter={()=>setHoveredId(p.id)} onMouseLeave={()=>setHoveredId(null)} style={{cursor:'pointer'}}>
                     <div className="land-project-thumb">
-                      {imgSrc
-                        ? <img src={imgSrc} alt={p.title} onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }} />
-                        : null
-                      }
+                      {imgSrc ? <img src={imgSrc} alt={p.title} onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }} /> : null}
                       <div className="land-project-placeholder" style={{ display: imgSrc ? 'none' : 'flex' }}>
                         <i className="fa-regular fa-image" />
                       </div>
                       {i === 0 && activeFilter === 'All' && <div className="land-top-badge"><i className="fa-solid fa-fire" /> Top</div>}
+                      {hoveredId===p.id && (
+                        <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.6)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,animation:'fadeUp .15s ease'}}>
+                          <div style={{display:'flex',gap:14,color:'#fff',fontSize:'.88rem',fontWeight:600}}>
+                            <span><i className="fa-solid fa-eye"/> {p.views||0}</span>
+                            <span><i className="fa-solid fa-heart"/> {p.like_count||0}</span>
+                            <span><i className="fa-regular fa-comment"/> {p.comment_count||0}</span>
+                          </div>
+                          <button onClick={(e)=>{e.stopPropagation();nav('/register')}} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.3)',color:'#fff',padding:'5px 14px',borderRadius:20,cursor:'pointer',fontSize:'.76rem'}}>View More</button>
+                        </div>
+                      )}
                     </div>
                     <div className="land-project-info">
                       <div className="land-project-title">{p.title}</div>
@@ -121,14 +133,15 @@ export default function LandingPage() {
                         <span className="land-project-cat">{p.category}</span>
                         <span className="land-project-views"><i className="fa-solid fa-eye" /> {p.views || 0}</span>
                       </div>
+                      {p.owner_name && <div style={{fontSize:'.72rem',color:'var(--text-dim)',marginTop:3}}>by {p.owner_name}</div>}
                       {p.skills && p.skills.length > 0 && (
                         <div className="land-project-skills">
                           {p.skills.slice(0, 3).map(s => <span key={s} className="land-skill-tag">{s}</span>)}
                         </div>
                       )}
                       <div className="land-project-links">
-                        {p.github_url && <a href={p.github_url} target="_blank" rel="noreferrer"><i className="fa-brands fa-github" /></a>}
-                        {p.deploy_url && <a href={p.deploy_url} target="_blank" rel="noreferrer"><i className="fa-solid fa-globe" /></a>}
+                        {p.github_url && <a href={p.github_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}><i className="fa-brands fa-github" /></a>}
+                        {p.deploy_url && <a href={p.deploy_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}><i className="fa-solid fa-globe" /></a>}
                       </div>
                     </div>
                   </div>
