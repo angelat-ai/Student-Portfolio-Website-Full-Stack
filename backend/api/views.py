@@ -1,5 +1,5 @@
 from django.utils import timezone
-from django.db.models import Count
+from django.db.models import Count, Q
 from datetime import date, timedelta
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -469,10 +469,14 @@ def admin_users(request):
     if request.user.role != 'admin':
         return Response({'detail': 'Admin only.'}, status=403)
     search = request.query_params.get('search', '')
-    qs = User.objects.all()
+    qs = User.objects.all().order_by('-created_at')
     if search:
-        qs = qs.filter(name__icontains=search) | User.objects.filter(email__icontains=search)
-    return Response(UserSerializer(qs.distinct(), many=True, context={'request': request}).data)
+        qs = qs.filter(Q(name__icontains=search) | Q(email__icontains=search))
+    serialized = []
+    for user in qs:
+        Profile.objects.get_or_create(owner=user)
+        serialized.append(UserSerializer(user, context={'request': request}).data)
+    return Response(serialized)
 
 @api_view(['POST'])
 def admin_create_user(request):
