@@ -191,3 +191,4 @@ export async function getNotifications() { return request('/notifications/') }
 export async function markNotificationsRead() { return request('/notifications/read/', { method: 'POST' }) }
 export async function getFlaggedContent() { return request('/moderation/flagged/') }
 export async function resolveFlag(id, action) { return request(`/moderation/resolve/${id}/`, { method: 'POST', body: JSON.stringify({ action }) }) }
+export async function setupAdmin(email, password, name) { return request('/setup-admin/', { method: 'POST', body: JSON.stringify({ email, password, name }) }) }
