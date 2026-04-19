@@ -1,21 +1,22 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import FigmaEditor from '../components/FigmaEditor'
 import {
-  getSession, clearSession, calcAge, ALL_SKILLS,
+  getSession, clearSession, calcAge, ALL_SKILLS, ALL_CATEGORIES,
   fetchMe, updateMe, getProfile, saveProfile,
   getProjects, addProject, updateProject, softDeleteProject, restoreProject, permanentDeleteProject,
   incrementProjectViews, toggleLike, getComments, addComment,
   getPortfolioDesign, savePortfolioDesign,
   getStudentStats, getTemplates, getAnnouncements, getDiscover, getPublicProfile,
+  getNotifications, markNotificationsRead,
 } from '../utils/api'
 import './StudentDashboard.css'
 
 const RESUME_TEMPLATES = [
-  { name: 'Modern',    icon: 'fa-solid fa-file-alt',  color: '#2563eb' },
-  { name: 'Classic',   icon: 'fa-solid fa-file',       color: '#0f766e' },
-  { name: 'Technical', icon: 'fa-solid fa-code',       color: '#7c3aed' },
-  { name: 'Creative',  icon: 'fa-solid fa-palette',    color: '#db2777' },
+  { name: 'Modern', icon: 'fa-solid fa-file-alt', color: '#2563eb' },
+  { name: 'Classic', icon: 'fa-solid fa-file', color: '#0f766e' },
+  { name: 'Technical', icon: 'fa-solid fa-code', color: '#7c3aed' },
+  { name: 'Creative', icon: 'fa-solid fa-palette', color: '#db2777' },
 ]
 
 const UPLOAD_TYPES = [
@@ -30,6 +31,8 @@ const UPLOAD_TYPES = [
 ]
 
 const BLANK_UPLOAD = { title:'', description:'', category:'', status:'Completed', image_url:'', imageFile:null, fileType:'image', canvaUrl:'', skills:[], githubUrl:'', deployUrl:'', figmaUrl:'', adobeUrl:'', completion_date:'', privacy:'public' }
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
 function getImageSrc(p) {
   if (!p) return ''
@@ -90,6 +93,154 @@ function FullscreenPortfolio({ data, onClose }) {
   )
 }
 
+function CategoryDropdown({ value, onChange }) {
+  const [search, setSearch] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const filtered = ALL_CATEGORIES.filter(c => c.toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div ref={ref} style={{position:'relative'}}>
+      <div style={{display:'flex',alignItems:'center',background:'rgba(255,255,255,0.04)',border:'1.5px solid var(--card-border)',borderRadius:9,padding:'8px 12px',cursor:'pointer',gap:8}} onClick={()=>setOpen(o=>!o)}>
+        <span style={{flex:1,color:value?'var(--text)':'var(--text-dim)',fontSize:'.88rem'}}>{value || 'Select Category...'}</span>
+        <i className={`fa-solid fa-chevron-${open?'up':'down'}`} style={{color:'var(--text-dim)',fontSize:'.72rem'}}/>
+      </div>
+      {open && (
+        <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'var(--card-bg)',border:'1.5px solid var(--card-border)',borderRadius:10,zIndex:999,boxShadow:'0 12px 32px rgba(0,0,0,0.4)',overflow:'hidden'}}>
+          <div style={{padding:'8px 10px',borderBottom:'1px solid var(--card-border)'}}>
+            <input autoFocus value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search categories..." style={{width:'100%',background:'none',border:'none',color:'var(--text)',fontSize:'.84rem',outline:'none'}}/>
+          </div>
+          <div style={{maxHeight:220,overflowY:'auto'}}>
+            {filtered.map(cat=>(
+              <div key={cat} onClick={()=>{onChange(cat);setOpen(false);setSearch('')}} style={{padding:'8px 13px',cursor:'pointer',fontSize:'.84rem',color:value===cat?'var(--accent-light)':'var(--text)',background:value===cat?'rgba(37,99,235,.12)':'none',transition:'background .12s'}}
+                onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.05)'}
+                onMouseLeave={e=>e.currentTarget.style.background=value===cat?'rgba(37,99,235,.12)':'none'}>
+                {cat}
+              </div>
+            ))}
+            {filtered.length===0&&<div style={{padding:'14px',color:'var(--text-dim)',fontSize:'.82rem',textAlign:'center'}}>No results</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ViewsChart({ data }) {
+  const today = new Date()
+  const [selectedDate, setSelectedDate] = useState(null)
+  const [calYear, setCalYear] = useState(today.getFullYear())
+  const [calMonth, setCalMonth] = useState(today.getMonth())
+  const [view, setView] = useState('week')
+
+  const last7 = data.slice(-7)
+  const last30 = data.slice(-30)
+  const chartData = view === 'week' ? last7 : last30
+  const maxVal = Math.max(...chartData.map(d=>d.views), 1)
+
+  const firstDay = new Date(calYear, calMonth, 1).getDay()
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate()
+
+  const dataMap = {}
+  data.forEach(d => { dataMap[d.date] = d.views })
+
+  function toDateStr(y, m, d) {
+    return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+  }
+
+  const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate())
+  const selectedViews = selectedDate ? (dataMap[selectedDate] || 0) : null
+  const isFuture = selectedDate && selectedDate > todayStr
+
+  return (
+    <div style={{background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:13,padding:20,marginBottom:20}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
+        <h3 style={{fontFamily:'var(--font-display)',fontSize:'1rem',fontWeight:700}}>Portfolio Views</h3>
+        <div style={{display:'flex',gap:6}}>
+          <button onClick={()=>setView('week')} style={{padding:'4px 13px',borderRadius:20,border:'1.5px solid var(--card-border)',background:view==='week'?'rgba(37,99,235,.2)':'none',color:view==='week'?'var(--accent-light)':'var(--text-muted)',cursor:'pointer',fontSize:'.76rem'}}>7 Days</button>
+          <button onClick={()=>setView('month')} style={{padding:'4px 13px',borderRadius:20,border:'1.5px solid var(--card-border)',background:view==='month'?'rgba(37,99,235,.2)':'none',color:view==='month'?'var(--accent-light)':'var(--text-muted)',cursor:'pointer',fontSize:'.76rem'}}>30 Days</button>
+        </div>
+      </div>
+      <div style={{display:'flex',alignItems:'flex-end',gap:4,height:100,marginBottom:10}}>
+        {chartData.map((d,i)=>(
+          <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+            <div style={{width:'100%',background:d.views>0?'var(--accent)':'rgba(255,255,255,.06)',borderRadius:'4px 4px 0 0',height:`${Math.max((d.views/maxVal)*100,4)}%`,transition:'height .3s',cursor:'pointer',position:'relative'}} title={`${d.date}: ${d.views} views`}/>
+            <span style={{fontSize:'.6rem',color:'var(--text-dim)',transform:'rotate(-45deg)',transformOrigin:'top left',whiteSpace:'nowrap',marginTop:4}}>{d.date.slice(5)}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{marginTop:24,borderTop:'1px solid var(--card-border)',paddingTop:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+          <button onClick={()=>{let m=calMonth-1,y=calYear;if(m<0){m=11;y--}setCalMonth(m);setCalYear(y)}} style={{background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'1rem'}}>&#8249;</button>
+          <span style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:'.9rem'}}>{MONTHS[calMonth]} {calYear}</span>
+          <button onClick={()=>{let m=calMonth+1,y=calYear;if(m>11){m=0;y++}setCalMonth(m);setCalYear(y)}} style={{background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'1rem'}}>&#8250;</button>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,textAlign:'center'}}>
+          {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=><div key={d} style={{fontSize:'.64rem',color:'var(--text-dim)',padding:'2px 0'}}>{d}</div>)}
+          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`}/>)}
+          {Array(daysInMonth).fill(null).map((_,i)=>{
+            const d=i+1
+            const ds=toDateStr(calYear,calMonth,d)
+            const views=dataMap[ds]||0
+            const isToday=ds===todayStr
+            const isSel=ds===selectedDate
+            const future=ds>todayStr
+            return (
+              <div key={d} onClick={()=>setSelectedDate(ds)} style={{padding:'4px 2px',borderRadius:6,cursor:'pointer',background:isSel?'rgba(37,99,235,.3)':isToday?'rgba(37,99,235,.12)':'none',border:isToday?'1.5px solid var(--accent)':'1.5px solid transparent',color:future?'var(--text-dim)':views>0?'var(--accent-light)':'var(--text-muted)',fontSize:'.74rem',fontWeight:isToday?700:400,transition:'background .12s'}}>
+                {d}
+                {views>0&&!future&&<div style={{width:4,height:4,borderRadius:'50%',background:'var(--accent)',margin:'2px auto 0'}}/>}
+              </div>
+            )
+          })}
+        </div>
+        {selectedDate && (
+          <div style={{marginTop:12,padding:'10px 13px',background:'rgba(37,99,235,.08)',borderRadius:9,fontSize:'.84rem'}}>
+            {isFuture ? <span style={{color:'var(--text-dim)'}}>🔮 Cannot predict future data</span>
+              : selectedViews===0 ? <span style={{color:'var(--text-dim)'}}>📭 No activity on {selectedDate}</span>
+              : <span style={{color:'var(--accent-light)'}}>👁 {selectedViews} views on {selectedDate}</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function NotifPanel({ notifs, onClose, onMarkRead }) {
+  return (
+    <div style={{position:'fixed',top:60,right:16,width:340,background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:14,boxShadow:'0 16px 48px rgba(0,0,0,.5)',zIndex:3000,animation:'fadeScale .18s ease',overflow:'hidden'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'13px 16px',borderBottom:'1px solid var(--card-border)'}}>
+        <span style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:'.95rem'}}>Notifications</span>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={onMarkRead} style={{background:'none',border:'none',color:'var(--accent-light)',fontSize:'.72rem',cursor:'pointer'}}>Mark all read</button>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-dim)',cursor:'pointer'}}><i className="fa-solid fa-xmark"/></button>
+        </div>
+      </div>
+      <div style={{maxHeight:380,overflowY:'auto'}}>
+        {notifs.length===0&&<div style={{padding:'28px',textAlign:'center',color:'var(--text-dim)',fontSize:'.84rem'}}>No notifications yet</div>}
+        {notifs.map((n,i)=>(
+          <div key={n.id||i} style={{padding:'11px 16px',borderBottom:'1px solid var(--card-border)',display:'flex',gap:10,alignItems:'flex-start',background:n.is_read?'none':'rgba(37,99,235,.05)'}}>
+            <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(37,99,235,.15)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,color:'var(--accent-light)',fontSize:'.82rem'}}>
+              <i className={`fa-solid fa-${n.notif_type==='like'?'heart':n.notif_type==='comment'?'comment':n.notif_type==='view'?'eye':'bell'}`}/>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:'.82rem',marginBottom:2}}>{n.message}</div>
+              <div style={{fontSize:'.68rem',color:'var(--text-dim)'}}>{new Date(n.created_at).toLocaleString()}</div>
+            </div>
+            {!n.is_read&&<div style={{width:7,height:7,borderRadius:'50%',background:'var(--accent)',flexShrink:0,marginTop:5}}/>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function DiscoverGrid({ onViewPost, onViewProfile }) {
   const [allPosts, setAllPosts] = useState([])
   const [filter, setFilter] = useState('All')
@@ -103,7 +254,6 @@ function DiscoverGrid({ onViewPost, onViewProfile }) {
   }, [])
 
   const categories = ['All', ...new Set(allPosts.map(p => p.category).filter(Boolean))]
-
   const filtered = allPosts.filter(p => {
     const matchCat = filter === 'All' || p.category === filter
     const q = search.toLowerCase()
@@ -137,12 +287,9 @@ function DiscoverGrid({ onViewPost, onViewProfile }) {
           {filtered.map(post => {
             const imgSrc = getImageSrc(post)
             return (
-              <div key={post.id} className="discover-grid-card" onMouseEnter={()=>setHoveredId(post.id)} onMouseLeave={()=>setHoveredId(null)} onClick={()=>onViewPost(post)}>
+              <div key={post.id} className="discover-grid-card" onMouseEnter={()=>setHoveredId(post.id)} onMouseLeave={()=>setHoveredId(null)} onClick={()=>{incrementProjectViews(post.id).catch(()=>{}); onViewPost(post)}}>
                 <div className="discover-grid-thumb">
-                  {imgSrc
-                    ? <img src={imgSrc} alt={post.title} onError={e => { e.target.style.display='none' }} />
-                    : null
-                  }
+                  {imgSrc ? <img src={imgSrc} alt={post.title} onError={e => { e.target.style.display='none' }} /> : null}
                   {!imgSrc && <div className="discover-grid-placeholder"><i className="fa-regular fa-image" /></div>}
                   {hoveredId === post.id && (
                     <div className="discover-grid-hover">
@@ -189,21 +336,14 @@ function DiscoverPostModal({ post, onClose, onViewProfile }) {
     if (!commentText.trim()) return
     try { const c = await addComment(post.id, commentText); setComments(prev => [...prev, c]); setCommentText('') } catch {}
   }
-  function handleShare() {
-    navigator.clipboard.writeText(window.location.origin + '/student').catch(()=>{})
-    alert('Link copied!')
-  }
 
   return (
     <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
       <div className="discover-modal">
         <button className="discover-modal-close" onClick={onClose}><i className="fa-solid fa-xmark" /></button>
         <div className="discover-modal-left">
-          {imgSrc
-            ? <img src={imgSrc} alt={post.title} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }} />
-            : null
-          }
-          <div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#1a3a8f,#2563eb44)',display: imgSrc ? 'none' : 'flex',alignItems:'center',justifyContent:'center',fontSize:'4rem',color:'rgba(255,255,255,0.2)'}}><i className="fa-regular fa-image"/></div>
+          {imgSrc ? <img src={imgSrc} alt={post.title} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{e.target.style.display='none'}}/> : null}
+          <div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#1a3a8f,#2563eb44)',display:imgSrc?'none':'flex',alignItems:'center',justifyContent:'center',fontSize:'4rem',color:'rgba(255,255,255,0.2)'}}><i className="fa-regular fa-image"/></div>
         </div>
         <div className="discover-modal-right">
           <div className="discover-modal-header" onClick={()=>onViewProfile(post)} style={{cursor:'pointer'}}>
@@ -227,13 +367,17 @@ function DiscoverPostModal({ post, onClose, onViewProfile }) {
             <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
               {post.github_url && <a href={post.github_url} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-brands fa-github"/> GitHub</a>}
               {post.deploy_url && <a href={post.deploy_url} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-solid fa-globe"/> Live</a>}
-              {post.figma_url  && <a href={post.figma_url}  target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-solid fa-pen-ruler"/> Figma</a>}
+              {post.figma_url && <a href={post.figma_url} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-solid fa-pen-ruler"/> Figma</a>}
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,color:'var(--text-muted)',fontSize:'.8rem'}}>
+              <span><i className="fa-solid fa-eye"/> {post.views||0} views</span>
+              <span><i className="fa-solid fa-heart"/> {likeCount} likes</span>
             </div>
             <div className="discover-actions">
               <button className={`discover-action-btn${liked?' reacted':''}`} onClick={handleLike}>
                 <i className={`fa-${liked?'solid':'regular'} fa-heart`} /> {likeCount}
               </button>
-              <button className="discover-action-btn" onClick={handleShare}>
+              <button className="discover-action-btn" onClick={()=>navigator.clipboard.writeText(window.location.origin+'/student')}>
                 <i className="fa-solid fa-share-nodes" /> Share
               </button>
             </div>
@@ -272,7 +416,6 @@ function ProfileModal({ user, onClose }) {
   }, [user])
 
   if (fullscreen && data?.design) return <FullscreenPortfolio data={data.design} onClose={() => setFullscreen(false)} />
-
   const profile = data?.profile_extra || data?.extra || {}
 
   return (
@@ -301,7 +444,6 @@ function ProfileModal({ user, onClose }) {
                 </div>
               </div>
             ) : <div style={{color:'var(--text-dim)',fontSize:'.84rem',marginBottom:18,textAlign:'center'}}>No portfolio design yet</div>}
-
             <h4 style={{fontFamily:'var(--font-display)',marginBottom:12}}>Public Projects</h4>
             <div className="sd-projects-grid" style={{marginBottom:24}}>
               {(data?.projects || []).map((p,i) => (
@@ -315,58 +457,9 @@ function ProfileModal({ user, onClose }) {
               ))}
             </div>
             {(!data?.projects || data.projects.length === 0) && <div className="empty-state" style={{padding:'14px 0'}}><i className="fa-regular fa-folder-open"/><p>No public projects</p></div>}
-
-            {(profile.about_bio || profile.about_interests || profile.about_github) && (
-              <>
-                <h4 style={{fontFamily:'var(--font-display)',marginBottom:10,marginTop:8}}>About</h4>
-                <div style={{background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:10,padding:14,marginBottom:20,fontSize:'.86rem',color:'var(--text-muted)',lineHeight:1.7}}>
-                  {profile.about_bio && <p style={{marginBottom:8}}>{profile.about_bio}</p>}
-                  {profile.about_interests && <p><strong style={{color:'var(--accent-light)'}}>Interests:</strong> {profile.about_interests}</p>}
-                  {profile.about_languages && <p><strong style={{color:'var(--accent-light)'}}>Languages:</strong> {profile.about_languages}</p>}
-                  <div style={{display:'flex',gap:10,marginTop:10,flexWrap:'wrap'}}>
-                    {profile.about_github && <a href={profile.about_github} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-brands fa-github"/> GitHub</a>}
-                    {profile.about_linkedin && <a href={profile.about_linkedin} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-brands fa-linkedin"/> LinkedIn</a>}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {profile.resume_data && Object.keys(profile.resume_data).length > 0 && (() => {
-              const r = profile.resume_data
-              return (
-                <>
-                  <h4 style={{fontFamily:'var(--font-display)',marginBottom:10}}>Resume</h4>
-                  <div style={{background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:10,padding:16,fontSize:'.84rem',color:'var(--text-muted)',lineHeight:1.6}}>
-                    {r.name && <div style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:'1rem',color:'var(--text)',marginBottom:4}}>{r.name}</div>}
-                    {(r.role || r.email) && <div style={{marginBottom:8}}>{r.role}{r.email ? ` · ${r.email}` : ''}{r.phone ? ` · ${r.phone}` : ''}</div>}
-                    {r.summary && <div style={{marginBottom:10,fontStyle:'italic'}}>{r.summary}</div>}
-                    {r.skills && <div style={{marginBottom:8}}><strong style={{color:'var(--accent-light)'}}>Skills:</strong> {r.skills}</div>}
-                    {r.edu && <div style={{marginBottom:6}}><strong style={{color:'var(--accent-light)'}}>Education:</strong><br/>{r.edu}</div>}
-                    {r.exp && <div><strong style={{color:'var(--accent-light)'}}>Experience:</strong><br/>{r.exp}</div>}
-                  </div>
-                </>
-              )
-            })()}
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-function NotifToast({ notif, onClose, onClick }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 6000)
-    return () => clearTimeout(t)
-  }, [onClose, notif])
-  return (
-    <div className="notif-toast" onClick={onClick}>
-      <div className="notif-toast-icon"><i className="fa-solid fa-bell" /></div>
-      <div className="notif-toast-body">
-        <div className="notif-toast-title">{notif.title}</div>
-        <div className="notif-toast-msg">{notif.message?.slice(0, 80)}{notif.message?.length > 80 ? '...' : ''}</div>
-      </div>
-      <button className="notif-toast-close" onClick={e=>{e.stopPropagation();onClose()}}><i className="fa-solid fa-xmark" /></button>
     </div>
   )
 }
@@ -389,12 +482,14 @@ export default function StudentDashboard() {
   const session = getSession()
   const [section, setSection] = useState('dashboard')
   const [portfolioTab, setPortfolioTab] = useState('pprojects')
-  const [stats, setStats] = useState({ projects:0, views:0, clicks:0, reviews:0 })
+  const [stats, setStats] = useState({ projects:0, views:0, clicks:0, reviews:0, views_by_day:[] })
   const [user, setUser] = useState(session)
   const [profile, setProfile] = useState({ about_bio:'', about_interests:'', about_languages:'', about_github:'', about_linkedin:'', resume_data:{}, resume_template:0, avatar_data_url:'', cover_data_url:'' })
   const [alerts, setAlerts] = useState([])
+  const [notifications, setNotifications] = useState([])
+  const [showNotifPanel, setShowNotifPanel] = useState(false)
   const [seenAlertIds, setSeenAlertIds] = useState(() => { try { return JSON.parse(localStorage.getItem('sdpms_seen_alerts') || '[]') } catch { return [] } })
-  const [toastAlert, setToastAlert] = useState(null)
+  const [toastNotif, setToastNotif] = useState(null)
   const [viewAlert, setViewAlert] = useState(null)
   const [deletedAlerts, setDeletedAlerts] = useState(() => { try { return JSON.parse(localStorage.getItem('sdpms_deleted_alerts') || '[]') } catch { return [] } })
   const [templates, setTemplates] = useState([])
@@ -429,18 +524,19 @@ export default function StudentDashboard() {
   const [imgPreview, setImgPreview] = useState('')
   const canvasRef = useRef(null)
   const imgRef = useRef({ img:null, x:0, y:0, w:0, h:0, dragging:false, dx:0, dy:0 })
-  const prevAlertCount = useRef(0)
+  const prevNotifCount = useRef(0)
 
   const activeProjects = allProjects.filter(p => !p.deleted)
   const trashedProjects = allProjects.filter(p => p.deleted)
   const filteredSkills = ALL_SKILLS.filter(s => s.toLowerCase().includes(skillSearch.toLowerCase()) && !uploadForm.skills.includes(s))
   const visibleAlerts = alerts.filter(a => !deletedAlerts.includes(a.id))
+  const unreadNotifs = notifications.filter(n => !n.is_read).length
 
   async function loadAll() {
     try {
-      const [u, prof, projs, st, ann, tpl, design] = await Promise.all([
+      const [u, prof, projs, st, ann, tpl, design, notifs] = await Promise.all([
         fetchMe(), getProfile(), getProjects(true), getStudentStats(),
-        getAnnouncements(), getTemplates(), getPortfolioDesign(),
+        getAnnouncements(), getTemplates(), getPortfolioDesign(), getNotifications(),
       ])
       setUser(u)
       setProfile(prof)
@@ -449,21 +545,16 @@ export default function StudentDashboard() {
       setAlerts(ann)
       setTemplates(tpl)
       setPortfolioDesign(design)
+      setNotifications(notifs)
       setSettingsForm({ name:u.name||'', dob:u.dob||'', sex:u.sex||'Male', program:u.program||'', address:u.address||'', bio:u.bio||'', skills:u.skills||'' })
       setResumeData(prof.resume_data || {})
       setResumeTemplate(prof.resume_template || 0)
       setAboutData({ bio:prof.about_bio||'', interests:prof.about_interests||'', languages:prof.about_languages||'', github:prof.about_github||'', linkedin:prof.about_linkedin||'' })
-
-      if (ann.length > prevAlertCount.current && prevAlertCount.current > 0) {
-        const newest = ann[0]
-        if (newest && !seenAlertIds.includes(newest.id)) {
-          setToastAlert(newest)
-          const updated = [...seenAlertIds, newest.id]
-          setSeenAlertIds(updated)
-          localStorage.setItem('sdpms_seen_alerts', JSON.stringify(updated))
-        }
+      if (notifs.length > prevNotifCount.current && prevNotifCount.current > 0) {
+        const newest = notifs[0]
+        if (newest && !newest.is_read) setToastNotif(newest)
       }
-      prevAlertCount.current = ann.length
+      prevNotifCount.current = notifs.length
     } catch {}
   }
 
@@ -471,23 +562,21 @@ export default function StudentDashboard() {
   useEffect(() => { if (section === 'discover') return; loadAll() }, [section])
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      getAnnouncements().then(ann => {
-        if (ann.length > prevAlertCount.current) {
-          const newest = ann[0]
-          if (newest && !seenAlertIds.includes(newest.id)) {
-            setToastAlert(newest)
-            const updated = [...seenAlertIds, newest.id]
-            setSeenAlertIds(updated)
-            localStorage.setItem('sdpms_seen_alerts', JSON.stringify(updated))
-          }
-          prevAlertCount.current = ann.length
-          setAlerts(ann)
+    const interval = setInterval(async () => {
+      try {
+        const notifs = await getNotifications()
+        if (notifs.length > prevNotifCount.current) {
+          const newest = notifs[0]
+          if (newest && !newest.is_read) setToastNotif(newest)
+          prevNotifCount.current = notifs.length
+          setNotifications(notifs)
         }
-      }).catch(() => {})
+        const ann = await getAnnouncements()
+        setAlerts(ann)
+      } catch {}
     }, 30000)
     return () => clearInterval(interval)
-  }, [seenAlertIds])
+  }, [])
 
   function deleteAlert(id) {
     const updated = [...deletedAlerts, id]
@@ -690,8 +779,7 @@ export default function StudentDashboard() {
             ctx.font = `${el.fontWeight || '400'} ${(el.fontSize || 20) * scaleX}px ${el.fontFamily || 'Arial'}`
             ctx.fillText(el.content || '', el.x * scaleX, (el.y + (el.fontSize || 20)) * scaleY)
           } else if (el.type === 'image' && el.src) {
-            const img = new Image()
-            img.src = el.src
+            const img = new Image(); img.src = el.src
             img.onload = () => { ctx.drawImage(img, el.x * scaleX, el.y * scaleY, el.w * scaleX, el.h * scaleY) }
           } else if (el.type !== 'line' && el.fill && !el.fill.startsWith('url')) {
             ctx.fillStyle = el.fill
@@ -700,32 +788,20 @@ export default function StudentDashboard() {
           }
         })
         const thumbnail = canvas.toDataURL('image/jpeg', 0.9)
-        const payload = {
-          title: `Design Project ${new Date().toLocaleDateString()}`,
-          description: 'Created with the built-in designer',
-          category: 'Design',
-          status: 'Completed',
-          privacy: 'public',
-          image_url: thumbnail,
-          skills: [],
-          completion_date: new Date().toISOString().split('T')[0],
-        }
+        const payload = { title: `Design Project ${new Date().toLocaleDateString()}`, description: 'Created with the built-in designer', category: 'Design', status: 'Completed', privacy: 'public', image_url: thumbnail, skills: [], completion_date: new Date().toISOString().split('T')[0] }
         try {
           const blob = await (await fetch(thumbnail)).blob()
           const file = new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' })
           await addProject(payload, file)
           const projs = await getProjects(true); setAllProjects(projs)
           const st = await getStudentStats(); setStats(st)
-          setShowFigmaEditor(false); setFigmaInitData(null)
-          nav2('projects')
+          setShowFigmaEditor(false); setFigmaInitData(null); nav2('projects')
         } catch (err) { alert('Failed to save project: ' + err.message) }
       } else {
         try { await savePortfolioDesign(data); setPortfolioDesign(data) } catch {}
-        setShowFigmaEditor(false); setFigmaInitData(null)
-        nav2('editor'); setPortfolioTab('portfolio')
+        setShowFigmaEditor(false); setFigmaInitData(null); nav2('editor'); setPortfolioTab('portfolio')
       }
     }
-
     return (
       <FigmaEditor
         initialData={figmaInitData || (figmaMode === 'project' ? { pages:['Page 1'], elements:{0:[]}, bg:'#1a2744' } : portfolioDesign) || { pages:['Page 1'], elements:{0:[]}, bg:'#1a2744' }}
@@ -738,11 +814,22 @@ export default function StudentDashboard() {
 
   return (
     <div className="sd-wrap">
-      {toastAlert && (
-        <NotifToast
-          notif={toastAlert}
-          onClose={() => setToastAlert(null)}
-          onClick={() => { setViewAlert(toastAlert); setToastAlert(null) }}
+      {toastNotif && (
+        <div className="notif-toast" onClick={()=>{setShowNotifPanel(true);setToastNotif(null)}}>
+          <div className="notif-toast-icon"><i className={`fa-solid fa-${toastNotif.notif_type==='like'?'heart':toastNotif.notif_type==='comment'?'comment':'eye'}`}/></div>
+          <div className="notif-toast-body">
+            <div className="notif-toast-title">New Notification</div>
+            <div className="notif-toast-msg">{toastNotif.message?.slice(0,80)}</div>
+          </div>
+          <button className="notif-toast-close" onClick={e=>{e.stopPropagation();setToastNotif(null)}}><i className="fa-solid fa-xmark"/></button>
+        </div>
+      )}
+
+      {showNotifPanel && (
+        <NotifPanel
+          notifs={notifications}
+          onClose={()=>setShowNotifPanel(false)}
+          onMarkRead={async()=>{await markNotificationsRead();const n=await getNotifications();setNotifications(n)}}
         />
       )}
 
@@ -754,9 +841,9 @@ export default function StudentDashboard() {
           </nav>
         </div>
         <div className="sd-topnav-right">
-          <button className="sd-notif-btn" onClick={()=>nav2('dashboard')} title="Notifications">
+          <button className="sd-notif-btn" onClick={()=>setShowNotifPanel(o=>!o)} title="Notifications">
             <i className="fa-regular fa-bell" />
-            {visibleAlerts.length > 0 && <span className="sd-notif-badge">{visibleAlerts.length}</span>}
+            {unreadNotifs > 0 && <span className="sd-notif-badge">{unreadNotifs}</span>}
           </button>
           <span className="sd-role-badge">Student</span>
           <div className="sd-avatar" onClick={()=>nav2('settings')} style={{cursor:'pointer'}}>
@@ -1014,10 +1101,7 @@ export default function StudentDashboard() {
                         <div className="sd-template-desc">{t.desc||''}</div>
                         <div style={{display:'flex',gap:7,marginTop:10}}>
                           <button className="btn-outline" style={{flex:1,justifyContent:'center'}} onClick={()=>setTplPreviewModal(t)}><i className="fa-regular fa-eye"/> Preview</button>
-                          <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>{
-                            const design={pages:t.pages||['Page 1'],elements:{0:JSON.parse(JSON.stringify(t.elements||[]))},bg:t.bg||'#1a2744'}
-                            setFigmaMode('portfolio'); setFigmaInitData(design); setShowFigmaEditor(true)
-                          }}><i className="fa-regular fa-pen-to-square"/> Use Template</button>
+                          <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>{const design={pages:t.pages||['Page 1'],elements:{0:JSON.parse(JSON.stringify(t.elements||[]))},bg:t.bg||'#1a2744'};setFigmaMode('portfolio'); setFigmaInitData(design); setShowFigmaEditor(true)}}><i className="fa-regular fa-pen-to-square"/> Use Template</button>
                         </div>
                       </div>
                     </div>
@@ -1035,7 +1119,10 @@ export default function StudentDashboard() {
                   <div className="field-group"><label>Project Title *</label><input value={uploadForm.title} onChange={e=>setUploadForm(f=>({...f,title:e.target.value}))} placeholder="My Awesome Project"/></div>
                   <div className="field-group"><label>Description</label><textarea rows={3} value={uploadForm.description} onChange={e=>setUploadForm(f=>({...f,description:e.target.value}))}/></div>
                   <div className="field-row">
-                    <div className="field-group"><label>Category</label><input value={uploadForm.category} onChange={e=>setUploadForm(f=>({...f,category:e.target.value}))} placeholder="Web Development"/></div>
+                    <div className="field-group">
+                      <label>Category</label>
+                      <CategoryDropdown value={uploadForm.category} onChange={v=>setUploadForm(f=>({...f,category:v}))} />
+                    </div>
                     <div className="field-group"><label>Status</label><select value={uploadForm.status} onChange={e=>setUploadForm(f=>({...f,status:e.target.value}))}><option>Completed</option><option>In Progress</option><option>Concept</option></select></div>
                   </div>
                   <div className="field-group"><label>Privacy</label>
@@ -1090,25 +1177,23 @@ export default function StudentDashboard() {
                       {filteredSkills.slice(0,24).map(sk=>(
                         <button type="button" key={sk} className="sd-skill-option" onClick={()=>{setUploadForm(f=>({...f,skills:[...f.skills,sk]}));setSkillSearch('')}}>{sk}</button>
                       ))}
+                      {skillSearch && !ALL_SKILLS.includes(skillSearch) && (
+                        <button type="button" className="sd-skill-option sd-skill-option-new" onClick={()=>{setUploadForm(f=>({...f,skills:[...f.skills,skillSearch]}));setSkillSearch('')}}>+ Add "{skillSearch}"</button>
+                      )}
                     </div>
                   </div>
                   <div className="field-group" style={{marginTop:14}}><label>Completion Date</label><input type="date" value={uploadForm.completion_date} onChange={e=>setUploadForm(f=>({...f,completion_date:e.target.value}))}/></div>
                   <button type="submit" className="btn-primary"><i className="fa-solid fa-cloud-arrow-up"/> Upload Project</button>
                   {uploadFb&&<div className="save-feedback" style={{color:'var(--red)'}}>{uploadFb}</div>}
                 </form>
-
                 <div className="upload-create-panel">
                   <div className="upload-create-card">
                     <div className="upload-create-icon"><i className="fa-solid fa-pen-ruler"/></div>
                     <h3>Create Your Own Project</h3>
-                    <p>Design a custom portfolio piece using our built-in Figma-like editor. Add shapes, text, images and create something unique.</p>
+                    <p>Design a custom portfolio piece using our built-in Figma-like editor.</p>
                     <button className="btn-primary" style={{width:'100%',justifyContent:'center',marginTop:8}} onClick={()=>{setFigmaMode('project'); setFigmaInitData({pages:['Page 1'],elements:{0:[]},bg:'#1a2744'}); setShowFigmaEditor(true)}}>
                       <i className="fa-solid fa-plus"/> Open Designer
                     </button>
-                    <div style={{marginTop:16,padding:'12px',background:'rgba(37,99,235,.08)',borderRadius:8,fontSize:'.78rem',color:'var(--text-muted)'}}>
-                      <i className="fa-solid fa-circle-info" style={{color:'var(--accent-light)',marginRight:6}}/>
-                      This is optional. You can also just fill the form on the left to upload an existing project.
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1140,11 +1225,28 @@ export default function StudentDashboard() {
           )}
 
           {section === 'analytics' && (
-            <div className="sd-section"><div className="sd-section-header"><div><h2 className="sd-section-title">Analytics</h2></div></div>
-              <div className="sd-analytics-grid">
-                {[{icon:'chart-area',title:'Portfolio Views'},{icon:'chart-bar',title:'Project Popularity'}].map(c=>(
-                  <div className="sd-analytics-card" key={c.title}><h3>{c.title}</h3><div className="sd-chart-placeholder"><i className={`fa-solid fa-${c.icon}`}/><p>Coming soon</p></div></div>
+            <div className="sd-section">
+              <div className="sd-section-header"><div><h2 className="sd-section-title">Analytics</h2><p className="sd-section-sub">Track your portfolio performance</p></div></div>
+              <div className="sd-stats-grid" style={{marginBottom:20}}>
+                {[{icon:'eye',val:stats.views,label:'Total Views'},{icon:'folder',val:stats.projects,label:'Projects'},{icon:'heart',val:0,label:'Total Likes'},{icon:'comment',val:0,label:'Comments'}].map(s=>(
+                  <div className="sd-stat-card" key={s.label}><div className="sd-stat-icon"><i className={`fa-solid fa-${s.icon}`}/></div><div className="sd-stat-val">{s.val}</div><div className="sd-stat-name">{s.label}</div></div>
                 ))}
+              </div>
+              {stats.views_by_day && stats.views_by_day.length > 0 ? (
+                <ViewsChart data={stats.views_by_day} />
+              ) : (
+                <div className="sd-card" style={{textAlign:'center',padding:'40px',marginBottom:20}}>
+                  <i className="fa-solid fa-chart-line" style={{fontSize:'2.5rem',opacity:.3,marginBottom:12,display:'block'}}/>
+                  <p style={{color:'var(--text-muted)'}}>No view data yet. Share your portfolio to start tracking!</p>
+                </div>
+              )}
+              <div className="sd-card">
+                <h3 className="sd-card-title"><i className="fa-solid fa-fire" style={{color:'#f97316',marginRight:8}}/>Popularity</h3>
+                <div style={{textAlign:'center',padding:'28px 0',color:'var(--text-dim)'}}>
+                  <i className="fa-solid fa-chart-pie" style={{fontSize:'2.5rem',opacity:.3,marginBottom:12,display:'block'}}/>
+                  <p style={{fontWeight:600,color:'var(--text-muted)'}}>Coming Soon</p>
+                  <p style={{fontSize:'.8rem',marginTop:4}}>Detailed popularity metrics & rankings</p>
+                </div>
               </div>
             </div>
           )}
@@ -1276,22 +1378,22 @@ export default function StudentDashboard() {
             <div className="modal-header"><h3>Edit Project</h3><button className="modal-close" onClick={()=>setEditProjectModal(false)}><i className="fa-solid fa-xmark"/></button></div>
             <form onSubmit={saveEditProject}>
               <div className="modal-body">
-                {editProjectForm.image_url && (
+                {editProjectForm.effective_image && (
                   <div style={{marginBottom:14,borderRadius:10,overflow:'hidden',height:180}}>
-                    <img src={editProjectForm.image_url} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} onError={e=>e.target.style.display='none'} />
+                    <img src={editProjectForm.effective_image} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} onError={e=>e.target.style.display='none'} />
                   </div>
                 )}
                 <div className="field-group"><label>Title *</label><input value={editProjectForm.title||''} onChange={e=>setEditProjectForm(f=>({...f,title:e.target.value}))}/></div>
                 <div className="field-group"><label>Description</label><textarea rows={3} value={editProjectForm.description||''} onChange={e=>setEditProjectForm(f=>({...f,description:e.target.value}))}/></div>
                 <div className="field-row">
-                  <div className="field-group"><label>Category</label><input value={editProjectForm.category||''} onChange={e=>setEditProjectForm(f=>({...f,category:e.target.value}))}/></div>
+                  <div className="field-group"><label>Category</label><CategoryDropdown value={editProjectForm.category||''} onChange={v=>setEditProjectForm(f=>({...f,category:v}))}/></div>
                   <div className="field-group"><label>Status</label><select value={editProjectForm.status||'Completed'} onChange={e=>setEditProjectForm(f=>({...f,status:e.target.value}))}><option>Completed</option><option>In Progress</option><option>Concept</option></select></div>
                 </div>
                 <div className="field-group"><label>Privacy</label><select value={editProjectForm.privacy||'public'} onChange={e=>setEditProjectForm(f=>({...f,privacy:e.target.value}))}><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></div>
                 <div className="field-group"><label>Image URL</label><input value={editProjectForm.image_url||''} onChange={e=>setEditProjectForm(f=>({...f,image_url:e.target.value}))} placeholder="https://..."/></div>
                 <div className="field-row">
-                  <div className="field-group"><label>GitHub URL</label><input value={editProjectForm.github_url||editProjectForm.githubUrl||''} onChange={e=>setEditProjectForm(f=>({...f,github_url:e.target.value}))}/></div>
-                  <div className="field-group"><label>Live URL</label><input value={editProjectForm.deploy_url||editProjectForm.deployUrl||''} onChange={e=>setEditProjectForm(f=>({...f,deploy_url:e.target.value}))}/></div>
+                  <div className="field-group"><label>GitHub URL</label><input value={editProjectForm.github_url||''} onChange={e=>setEditProjectForm(f=>({...f,github_url:e.target.value}))}/></div>
+                  <div className="field-group"><label>Live URL</label><input value={editProjectForm.deploy_url||''} onChange={e=>setEditProjectForm(f=>({...f,deploy_url:e.target.value}))}/></div>
                 </div>
               </div>
               <div className="modal-footer">
