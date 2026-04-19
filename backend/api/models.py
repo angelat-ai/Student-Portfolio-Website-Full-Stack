@@ -21,7 +21,6 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     ROLES = [('admin', 'Admin'), ('student', 'Student')]
-
     email = models.EmailField(unique=True)
     name = models.CharField(max_length=200)
     role = models.CharField(max_length=20, choices=ROLES, default='student')
@@ -37,10 +36,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     last_active = models.DateTimeField(auto_now=True)
-
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['name']
-
     objects = UserManager()
 
     def __str__(self):
@@ -50,14 +47,13 @@ class User(AbstractBaseUser, PermissionsMixin):
 class Project(models.Model):
     STATUS_CHOICES = [('Completed', 'Completed'), ('In Progress', 'In Progress'), ('Concept', 'Concept')]
     PRIVACY_CHOICES = [('public', 'Public'), ('unlisted', 'Unlisted'), ('private', 'Private')]
-
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='projects')
     title = models.CharField(max_length=300)
     description = models.TextField(blank=True)
     category = models.CharField(max_length=100, blank=True)
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='Completed')
     privacy = models.CharField(max_length=20, choices=PRIVACY_CHOICES, default='public')
-    image_url = models.URLField(blank=True)
+    image_url = models.TextField(blank=True)
     image_file = models.ImageField(upload_to='projects/', null=True, blank=True)
     github_url = models.URLField(blank=True)
     deploy_url = models.URLField(blank=True)
@@ -105,13 +101,11 @@ class Comment(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='comments')
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='comments')
     text = models.TextField()
+    is_flagged = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['created_at']
-
-    def __str__(self):
-        return f'{self.author.name}: {self.text[:40]}'
 
 
 class PortfolioDesign(models.Model):
@@ -172,22 +166,51 @@ class Category(models.Model):
     class Meta:
         ordering = ['name']
 
-    def __str__(self):
-        return self.name
-
 
 class SiteContent(models.Model):
     key = models.CharField(max_length=100, unique=True)
     value = models.TextField(blank=True)
-
-    def __str__(self):
-        return self.key
 
 
 class PortfolioView(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='portfolio_views')
     viewer_key = models.CharField(max_length=200)
     date = models.DateField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ('owner', 'viewer_key', 'date')
+
+
+class ProjectView(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='project_views')
+    viewer_key = models.CharField(max_length=200)
+    date = models.DateField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('project', 'viewer_key', 'date')
+
+
+class Notification(models.Model):
+    TYPES = [('view', 'View'), ('like', 'Like'), ('comment', 'Comment'), ('follow', 'Follow'), ('flag', 'Flag')]
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    sender_name = models.CharField(max_length=200, default='Someone')
+    notif_type = models.CharField(max_length=20, choices=TYPES, default='view')
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class FlaggedContent(models.Model):
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True)
+    reason = models.TextField()
+    detected_words = models.TextField(blank=True)
+    resolved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']

@@ -1,9 +1,62 @@
-const BASE = window.location.hostname === 'localhost' 
-  ? 'http://127.0.0.1:8000/api' 
+const BASE = window.location.hostname === 'localhost'
+  ? 'http://127.0.0.1:8000/api'
   : 'https://sdpms-backend.onrender.com/api'
 
+export const ALL_CATEGORIES = [
+  'Web Development','Mobile Development','Game Development','UI/UX Design',
+  'Graphic Design','Animation','Digital Art','Traditional Drawing','Painting',
+  'Logo Design','GIF Creation','Video Editing','Photography','Cybersecurity',
+  'Data Science','Artificial Intelligence','Machine Learning','Networking',
+  'Database Administration','Cloud Computing','DevOps','Blockchain',
+  'Augmented Reality','Virtual Reality','Internet of Things','Robotics',
+  'Embedded Systems','Hardware Engineering','Electronics','Electrical Engineering',
+  'Civil Engineering','Mechanical Engineering','Architecture','Interior Design',
+  'Fashion Design','Textile Design','Jewelry Design','Product Design',
+  'Industrial Design','3D Modeling','3D Printing','Music Production',
+  'Sound Design','Film Making','Screenwriting','Podcast Production',
+  'Content Writing','Copywriting','Technical Writing','Journalism',
+  'Marketing','Social Media','SEO','E-Commerce','Business Analytics',
+  'Accounting','Finance','Human Resources','Project Management',
+  'Entrepreneurship','Nursing','Medical Technology','Pharmacy','Nutrition',
+  'Physical Therapy','Psychology','Education','Research','Criminology',
+  'Political Science','Tourism','Hospitality','Culinary Arts','Cartoonist',
+  'Comics','Illustration','Calligraphy','Typography','Branding','Advertising',
+  'Public Relations','Event Planning','Sports Science','Environmental Science',
+  'Agriculture','Veterinary','Forestry','Marine Biology','Astronomy','Physics',
+  'Chemistry','Mathematics','Statistics','Economics','Sociology','Anthropology',
+  'History','Philosophy','Linguistics','Translation','Other',
+]
+
+export const ALL_SKILLS = [
+  'HTML','CSS','JavaScript','TypeScript','React','Vue','Angular','Next.js','Nuxt.js',
+  'Svelte','Node.js','Express.js','Django','Flask','FastAPI','Laravel','PHP',
+  'Ruby on Rails','Spring Boot','ASP.NET','Python','Java','C','C++','C#',
+  'Kotlin','Swift','Dart','Flutter','React Native','Ionic','Xamarin',
+  'SQL','MySQL','PostgreSQL','MongoDB','Firebase','Supabase','Redis',
+  'GraphQL','REST API','WebSockets','Docker','Kubernetes','AWS','Azure',
+  'Google Cloud','Linux','Git','GitHub','GitLab','Figma','Adobe XD',
+  'Sketch','InVision','Zeplin','Photoshop','Illustrator','After Effects',
+  'Premiere Pro','Final Cut Pro','DaVinci Resolve','Blender','Maya','Cinema 4D',
+  'Unity','Unreal Engine','Godot','Three.js','WebGL','TensorFlow','PyTorch',
+  'Scikit-Learn','Pandas','NumPy','Tableau','Power BI','Excel','R',
+  'MATLAB','Arduino','Raspberry Pi','Solidworks','AutoCAD','Revit',
+  'Procreate','Clip Studio Paint','Krita','GIMP','Canva','CapCut',
+  'Lightroom','Capture One','OBS Studio','Audacity','FL Studio','Ableton',
+  'Logic Pro','GarageBand','WordPress','Shopify','Webflow','Wix',
+  'Salesforce','HubSpot','Jira','Trello','Notion','Slack','Zoom',
+  'Cybersecurity','Ethical Hacking','Penetration Testing','Network Security',
+  'Blockchain','Web3','Solidity','Smart Contracts','NFT Development',
+  'SEO','SEM','Google Analytics','Facebook Ads','Content Marketing',
+  'Video Editing','Motion Graphics','2D Animation','3D Animation',
+  'Voice Acting','Public Speaking','Leadership','Project Management',
+  'Agile','Scrum','Communication','Teamwork','Problem Solving','Critical Thinking',
+  'Research','Data Analysis','Statistical Analysis','Academic Writing',
+  'Copywriting','Journalism','Photography','Videography','Drone Operation',
+  'Sign Language','First Aid','CPR','Medical Coding','Patient Care',
+]
+
 function getToken() { return localStorage.getItem('sdpms_access') }
-function setTokens(access, refresh) { localStorage.setItem('sdpms_access', access); localStorage.setItem('sdpms_refresh', refresh) }
+function setTokens(a, r) { localStorage.setItem('sdpms_access', a); localStorage.setItem('sdpms_refresh', r) }
 function clearTokens() { localStorage.removeItem('sdpms_access'); localStorage.removeItem('sdpms_refresh'); localStorage.removeItem('sdpms_user') }
 
 async function request(path, options = {}) {
@@ -11,9 +64,7 @@ async function request(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
   if (token) headers['Authorization'] = `Bearer ${token}`
   if (options.body instanceof FormData) delete headers['Content-Type']
-
   const res = await fetch(`${BASE}${path}`, { ...options, headers })
-
   if (res.status === 401) {
     const refreshed = await tryRefresh()
     if (refreshed) {
@@ -27,7 +78,6 @@ async function request(path, options = {}) {
       return
     }
   }
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || JSON.stringify(err))
@@ -87,15 +137,8 @@ export async function updateMe(payload) {
 
 export async function getProfile() { return request('/profile/') }
 export async function saveProfile(payload) { return request('/profile/', { method: 'PATCH', body: JSON.stringify(payload) }) }
-
-export async function getPublicProfile(userId) {
-  if (!userId) return null
-  return request(`/profile/${userId}/`)
-}
-
-export async function getProjects(includeDeleted = false) {
-  return request(`/projects/${includeDeleted ? '?include_deleted=true' : ''}`)
-}
+export async function getPublicProfile(userId) { if (!userId) return null; return request(`/profile/${userId}/`) }
+export async function getProjects(includeDeleted = false) { return request(`/projects/${includeDeleted ? '?include_deleted=true' : ''}`) }
 
 export async function addProject(payload, imageFile) {
   if (imageFile) {
@@ -115,7 +158,6 @@ export async function incrementProjectViews(id) { return request(`/projects/${id
 export async function toggleLike(projectId) { return request(`/projects/${projectId}/like/`, { method: 'POST' }) }
 export async function getComments(projectId) { return request(`/projects/${projectId}/comments/`) }
 export async function addComment(projectId, text) { return request(`/projects/${projectId}/comments/`, { method: 'POST', body: JSON.stringify({ text }) }) }
-
 export async function getDiscover(category, sort) {
   const params = new URLSearchParams()
   if (category && category !== 'All') params.set('category', category)
@@ -123,17 +165,13 @@ export async function getDiscover(category, sort) {
   const qs = params.toString()
   return request(`/discover/${qs ? '?' + qs : ''}`)
 }
-
 export async function getTopProjects() { return request('/discover/top/') }
 export async function getPortfolioDesign() { return request('/portfolio/') }
 export async function savePortfolioDesign(payload) { return request('/portfolio/', { method: 'POST', body: JSON.stringify(payload) }) }
 export async function incrementPortfolioView(userId) { return request(`/profile/${userId}/view/`, { method: 'POST' }) }
 export async function getStudentStats() { return request('/stats/') }
 export async function getAdminStats() { return request('/admin/stats/') }
-
-export async function getTemplates(category) {
-  return request(`/templates/${category && category !== 'all' ? '?category=' + category : ''}`)
-}
+export async function getTemplates(category) { return request(`/templates/${category && category !== 'all' ? '?category=' + category : ''}`) }
 export async function getTrashedTemplates() { return request('/templates/trashed/') }
 export async function createTemplate(payload) { return request('/templates/create/', { method: 'POST', body: JSON.stringify(payload) }) }
 export async function updateTemplate(id, payload) { return request(`/templates/${id}/`, { method: 'PATCH', body: JSON.stringify(payload) }) }
@@ -149,12 +187,7 @@ export async function adminGetUsers(search = '') { return request(`/admin/users/
 export async function adminCreateUser(payload) { return request('/admin/users/create/', { method: 'POST', body: JSON.stringify(payload) }) }
 export async function adminUpdateUser(id, payload) { return request(`/admin/users/${id}/`, { method: 'PATCH', body: JSON.stringify(payload) }) }
 export async function adminToggleSuspend(id) { return request(`/admin/users/${id}/suspend/`, { method: 'PATCH' }) }
-
-export const ALL_SKILLS = [
-  'HTML','CSS','JavaScript','TypeScript','React','Vue','Angular','Next.js','Node.js',
-  'Python','Java','C++','C#','PHP','Laravel','Django','Flask','SQL','MySQL','PostgreSQL',
-  'MongoDB','Firebase','Supabase','Git','GitHub','Figma','Adobe XD','Photoshop','Illustrator',
-  'After Effects','Premiere Pro','Blender','Unity','Unreal Engine','Swift','Kotlin','Flutter',
-  'React Native','Docker','AWS','Linux','Networking','Cybersecurity','Machine Learning','AI',
-  'Data Analysis','Excel','PowerBI','Tableau','Arduino','IoT','Robotics','3D Modeling',
-]
+export async function getNotifications() { return request('/notifications/') }
+export async function markNotificationsRead() { return request('/notifications/read/', { method: 'POST' }) }
+export async function getFlaggedContent() { return request('/moderation/flagged/') }
+export async function resolveFlag(id, action) { return request(`/moderation/resolve/${id}/`, { method: 'POST', body: JSON.stringify({ action }) }) }
