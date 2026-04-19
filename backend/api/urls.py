@@ -36,4 +36,5 @@ urlpatterns = [
     path('notifications/read/', views.mark_notifications_read),
     path('moderation/flagged/', views.flagged_content),
     path('moderation/resolve/<int:pk>/', views.resolve_flag),
+    path('setup-admin/', views.setup_admin),
 ]

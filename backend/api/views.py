@@ -23,8 +23,7 @@ BAD_WORDS = [
 
 def contains_bad_words(text):
     text_lower = text.lower()
-    found = [w for w in BAD_WORDS if w in text_lower]
-    return found
+    return [w for w in BAD_WORDS if w in text_lower]
 
 def get_tokens(user):
     refresh = RefreshToken.for_user(user)
@@ -37,12 +36,7 @@ def get_viewer_key(request):
 
 def create_notification(recipient, sender_name, notif_type, message):
     if recipient:
-        Notification.objects.create(
-            recipient=recipient,
-            sender_name=sender_name,
-            notif_type=notif_type,
-            message=message,
-        )
+        Notification.objects.create(recipient=recipient, sender_name=sender_name, notif_type=notif_type, message=message)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -71,7 +65,6 @@ def login(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def token_refresh(request):
-    from rest_framework_simplejwt.tokens import RefreshToken
     try:
         refresh = RefreshToken(request.data.get('refresh'))
         return Response({'access': str(refresh.access_token)})
@@ -563,3 +556,22 @@ def resolve_flag(request, pk):
     flag.resolved = True
     flag.save()
     return Response({'status': 'resolved'})
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def setup_admin(request):
+    email = request.data.get('email')
+    password = request.data.get('password')
+    name = request.data.get('name', 'Admin')
+    if not email or not password:
+        return Response({'detail': 'Email and password required.'}, status=400)
+    if User.objects.filter(role='admin').exists():
+        return Response({'detail': 'Admin already exists.'}, status=400)
+    user, _ = User.objects.get_or_create(email=email.lower().strip())
+    user.name = name
+    user.role = 'admin'
+    user.is_staff = True
+    user.set_password(password)
+    user.save()
+    Profile.objects.get_or_create(owner=user)
+    return Response({'status': 'Admin created!', 'tokens': get_tokens(user)})
