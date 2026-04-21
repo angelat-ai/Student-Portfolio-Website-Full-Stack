@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import timedelta
+import os
 import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -55,12 +56,19 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-DATABASES = {
-    'default': dj_database_url.parse(
-        'postgresql://sdpms_db_user:impQ9Ezp0fJiGfpDROHSaq2VW1AF30tk@dpg-d7i4dghf9bms73futdfg-a.oregon-postgres.render.com/sdpms_db',
-        conn_max_age=600,
-    )
-}
+# Database configuration: use SQLite locally, PostgreSQL on Render (when DATABASE_URL is set)
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 AUTH_USER_MODEL = 'api.User'
 

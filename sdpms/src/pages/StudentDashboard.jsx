@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import FigmaEditor from '../components/FigmaEditor'
 import {
@@ -322,12 +322,19 @@ function DiscoverGrid({ onViewPost, onViewProfile }) {
   )
 }
 
-function DiscoverPostModal({ post, onClose, onViewProfile }) {
+function DiscoverPostModal({ post, onClose, onViewProfile, allPosts = [] }) {
   const [comments, setComments] = useState(post.comments || [])
   const [likeCount, setLikeCount] = useState(post.like_count || 0)
   const [liked, setLiked] = useState(post.liked_by_me || false)
   const [commentText, setCommentText] = useState('')
+  const [rating, setRating] = useState(0)
+  const [hoverRating, setHoverRating] = useState(0)
+  const [showReviewThanks, setShowReviewThanks] = useState(false)
   const imgSrc = getImageSrc(post)
+
+  const currentIndex = allPosts.findIndex(p => p.id === post.id)
+  const prevPost = currentIndex > 0 ? allPosts[currentIndex - 1] : null
+  const nextPost = currentIndex < allPosts.length - 1 ? allPosts[currentIndex + 1] : null
 
   async function handleLike() {
     try { const data = await toggleLike(post.id); setLiked(data.liked); setLikeCount(data.count) } catch {}
@@ -337,13 +344,33 @@ function DiscoverPostModal({ post, onClose, onViewProfile }) {
     try { const c = await addComment(post.id, commentText); setComments(prev => [...prev, c]); setCommentText('') } catch {}
   }
 
+  function submitReview() {
+    if (rating === 0) return
+    setShowReviewThanks(true)
+    setTimeout(() => setShowReviewThanks(false), 3000)
+    setRating(0)
+  }
+
   return (
     <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
       <div className="discover-modal">
         <button className="discover-modal-close" onClick={onClose}><i className="fa-solid fa-xmark" /></button>
-        <div className="discover-modal-left">
+        <div className="discover-modal-left" style={{position:'relative'}}>
           {imgSrc ? <img src={imgSrc} alt={post.title} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{e.target.style.display='none'}}/> : null}
           <div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#1a3a8f,#2563eb44)',display:imgSrc?'none':'flex',alignItems:'center',justifyContent:'center',fontSize:'4rem',color:'rgba(255,255,255,0.2)'}}><i className="fa-regular fa-image"/></div>
+          <div style={{position:'absolute',bottom:10,right:10,display:'flex',gap:5}}>
+            <span style={{background:'rgba(0,0,0,0.6)',color:'#fff',padding:'2px 8px',borderRadius:20,fontSize:'.7rem'}}><i className="fa-solid fa-eye"/> {post.views||0}</span>
+          </div>
+          {prevPost && (
+            <button className="discover-nav-arrow left" onClick={(e)=>{e.stopPropagation(); onClose(); setTimeout(() => onViewProfile(prevPost), 50)}}>
+              <i className="fa-solid fa-chevron-left"/>
+            </button>
+          )}
+          {nextPost && (
+            <button className="discover-nav-arrow right" onClick={(e)=>{e.stopPropagation(); onClose(); setTimeout(() => onViewProfile(nextPost), 50)}}>
+              <i className="fa-solid fa-chevron-right"/>
+            </button>
+          )}
         </div>
         <div className="discover-modal-right">
           <div className="discover-modal-header" onClick={()=>onViewProfile(post)} style={{cursor:'pointer'}}>
@@ -372,6 +399,20 @@ function DiscoverPostModal({ post, onClose, onViewProfile }) {
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,color:'var(--text-muted)',fontSize:'.8rem'}}>
               <span><i className="fa-solid fa-eye"/> {post.views||0} views</span>
               <span><i className="fa-solid fa-heart"/> {likeCount} likes</span>
+            </div>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:'.8rem',marginBottom:5}}>Rate this project:</div>
+              <div style={{display:'flex',gap:3}}>
+                {[1,2,3,4,5].map(star => (
+                  <i key={star} className={`fa-${star <= (hoverRating || rating) ? 'solid' : 'regular'} fa-star`}
+                     style={{color:'#fbbf24',cursor:'pointer',fontSize:'1.2rem'}}
+                     onMouseEnter={()=>setHoverRating(star)}
+                     onMouseLeave={()=>setHoverRating(0)}
+                     onClick={()=>setRating(star)} />
+                ))}
+                {rating > 0 && <button className="btn-primary" style={{marginLeft:8,padding:'2px 10px',fontSize:'.7rem'}} onClick={submitReview}>Submit</button>}
+              </div>
+              {showReviewThanks && <div style={{color:'var(--accent-light)',fontSize:'.75rem',marginTop:4}}>Thank you! ❤️</div>}
             </div>
             <div className="discover-actions">
               <button className={`discover-action-btn${liked?' reacted':''}`} onClick={handleLike}>
@@ -408,6 +449,9 @@ function ProfileModal({ user, onClose }) {
   const [data, setData] = useState(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const portfolioRef = useRef(null)
+  const aboutRef = useRef(null)
+  const resumeRef = useRef(null)
 
   useEffect(() => {
     const ownerId = user.owner || user.owner_id || user.id
@@ -415,39 +459,107 @@ function ProfileModal({ user, onClose }) {
     getPublicProfile(ownerId).then(setData).catch(() => {}).finally(() => setLoading(false))
   }, [user])
 
+  const scrollToSection = (ref) => {
+    if (ref.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
   if (fullscreen && data?.design) return <FullscreenPortfolio data={data.design} onClose={() => setFullscreen(false)} />
+
   const profile = data?.profile_extra || data?.extra || {}
+  const resumeData = profile.resume_data || {}
+  const aboutData = {
+    bio: profile.about_bio || '',
+    interests: profile.about_interests || '',
+    languages: profile.about_languages || '',
+    github: profile.about_github || '',
+    linkedin: profile.about_linkedin || ''
+  }
 
   return (
-    <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="profile-modal">
         <button className="discover-modal-close" onClick={onClose}><i className="fa-solid fa-xmark" /></button>
-        <div className="profile-modal-cover" style={data?.user?.cover_url?{backgroundImage:`url(${data.user.cover_url})`,backgroundSize:'cover',backgroundPosition:'center'}:{}} />
+        <div className="profile-modal-cover" style={data?.user?.cover_url ? { backgroundImage: `url(${data.user.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}} />
         <div className="profile-modal-header">
           <div className="profile-modal-avatar">
-            {data?.user?.avatar_url ? <img src={data.user.avatar_url} alt="avatar" onError={e=>e.target.style.display='none'} /> : <i className="fa-solid fa-user" style={{fontSize:'2rem'}} />}
+            {data?.user?.avatar_url ? <img src={data.user.avatar_url} alt="avatar" onError={e => e.target.style.display = 'none'} /> : <i className="fa-solid fa-user" style={{ fontSize: '2rem' }} />}
           </div>
-          <div style={{flex:1}}>
-            <div style={{fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.2rem'}}>{data?.user?.name || user.owner_name}</div>
-            <div style={{color:'var(--text-muted)',fontSize:'.84rem'}}>{data?.user?.program || 'Student'}</div>
-            {profile.about_bio && <p style={{color:'var(--text-muted)',fontSize:'.8rem',marginTop:6,lineHeight:1.5}}>{profile.about_bio}</p>}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.2rem' }}>{data?.user?.name || user.owner_name}</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '.84rem' }}>{data?.user?.program || 'Student'}</div>
           </div>
-          {data?.design && <button className="btn-outline" onClick={()=>setFullscreen(true)}><i className="fa-solid fa-expand" /> Portfolio</button>}
+          <div style={{display:'flex',gap:6}}>
+            <button className="btn-outline" style={{padding:'4px 10px'}} onClick={() => scrollToSection(portfolioRef)}><i className="fa-regular fa-images"/> Portfolio</button>
+            <button className="btn-outline" style={{padding:'4px 10px'}} onClick={() => scrollToSection(aboutRef)}><i className="fa-regular fa-user"/> About</button>
+            <button className="btn-outline" style={{padding:'4px 10px'}} onClick={() => scrollToSection(resumeRef)}><i className="fa-regular fa-file-lines"/> Resume</button>
+          </div>
+          {data?.design && <button className="btn-outline" onClick={() => setFullscreen(true)}><i className="fa-solid fa-expand" /> Full</button>}
         </div>
-        {loading && <div style={{padding:24,textAlign:'center',color:'var(--text-dim)'}}><i className="fa-solid fa-spinner fa-spin"/> Loading...</div>}
+
+        {loading && <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-dim)' }}><i className="fa-solid fa-spinner fa-spin" /> Loading...</div>}
+
         {!loading && (
-          <div className="profile-modal-body">
-            {data?.design && (data.design.elements?.['0']?.length > 0 || data.design.elements?.[0]?.length > 0) ? (
-              <div style={{overflowX:'auto',marginBottom:24}}>
-                <div style={{transform:'scale(0.55)',transformOrigin:'top left',height:308,width:'100%'}}>
-                  <PortfolioCanvas data={data.design} />
+          <div className="profile-modal-body" style={{maxHeight:'70vh',overflowY:'auto',paddingRight:8}}>
+            <div ref={portfolioRef}>
+              <h4 style={{ fontFamily: 'var(--font-display)', marginBottom: 12 }}>Portfolio Design</h4>
+              {data?.design && (data.design.elements?.['0']?.length > 0 || data.design.elements?.[0]?.length > 0) ? (
+                <div style={{ overflowX: 'auto', marginBottom: 24 }}>
+                  <div style={{ transform: 'scale(0.55)', transformOrigin: 'top left', height: 308, width: '100%' }}>
+                    <PortfolioCanvas data={data.design} />
+                  </div>
                 </div>
-              </div>
-            ) : <div style={{color:'var(--text-dim)',fontSize:'.84rem',marginBottom:18,textAlign:'center'}}>No portfolio design yet</div>}
-            <h4 style={{fontFamily:'var(--font-display)',marginBottom:12}}>Public Projects</h4>
-            <div className="sd-projects-grid" style={{marginBottom:24}}>
-              {(data?.projects || []).map((p,i) => (
-                <div className="sd-project-card" key={p.id||i}>
+              ) : <div style={{ color: 'var(--text-dim)', fontSize: '.84rem', marginBottom: 18, textAlign: 'center' }}>No portfolio design yet</div>}
+            </div>
+
+            <div ref={aboutRef}>
+              <h4 style={{ fontFamily: 'var(--font-display)', marginBottom: 12 }}>About {data?.user?.name?.split(' ')[0]}</h4>
+              {aboutData.bio && <p style={{ color: 'var(--text-muted)', fontSize: '.86rem', lineHeight: 1.6, marginBottom: 12 }}>{aboutData.bio}</p>}
+              {(aboutData.interests || aboutData.languages || aboutData.github || aboutData.linkedin) && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {aboutData.interests && <div><strong style={{ color: 'var(--text)', fontSize: '.8rem' }}>Interests:</strong> <span style={{ color: 'var(--text-muted)', fontSize: '.84rem' }}>{aboutData.interests}</span></div>}
+                    {aboutData.languages && <div><strong style={{ color: 'var(--text)', fontSize: '.8rem' }}>Languages:</strong> <span style={{ color: 'var(--text-muted)', fontSize: '.84rem' }}>{aboutData.languages}</span></div>}
+                    {aboutData.github && <div><i className="fa-brands fa-github" style={{ marginRight: 6, color: 'var(--accent-light)' }} /><a href={aboutData.github} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-light)', fontSize: '.84rem' }}>GitHub</a></div>}
+                    {aboutData.linkedin && <div><i className="fa-brands fa-linkedin" style={{ marginRight: 6, color: 'var(--accent-light)' }} /><a href={aboutData.linkedin} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-light)', fontSize: '.84rem' }}>LinkedIn</a></div>}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div ref={resumeRef}>
+              <h4 style={{ fontFamily: 'var(--font-display)', marginBottom: 12 }}>Resume Highlights</h4>
+              {(resumeData.skills || resumeData.edu || resumeData.exp) ? (
+                <div style={{ marginBottom: 20 }}>
+                  {resumeData.skills && (
+                    <div style={{ marginBottom: 12 }}>
+                      <strong style={{ color: 'var(--accent-light)', fontSize: '.8rem', textTransform: 'uppercase' }}>Skills</strong>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                        {resumeData.skills.split(',').map(s => <span key={s} style={{ background: 'rgba(37,99,235,.15)', border: '1px solid rgba(37,99,235,.25)', padding: '2px 10px', borderRadius: 20, fontSize: '.76rem' }}>{s.trim()}</span>)}
+                      </div>
+                    </div>
+                  )}
+                  {resumeData.edu && (
+                    <div style={{ marginBottom: 8 }}>
+                      <strong style={{ color: 'var(--accent-light)', fontSize: '.8rem', textTransform: 'uppercase' }}>Education</strong>
+                      <p style={{ marginTop: 4, fontSize: '.84rem', color: 'var(--text-muted)', whiteSpace: 'pre-line' }}>{resumeData.edu}</p>
+                    </div>
+                  )}
+                  {resumeData.exp && (
+                    <div>
+                      <strong style={{ color: 'var(--accent-light)', fontSize: '.8rem', textTransform: 'uppercase' }}>Experience</strong>
+                      <p style={{ marginTop: 4, fontSize: '.84rem', color: 'var(--text-muted)', whiteSpace: 'pre-line' }}>{resumeData.exp}</p>
+                    </div>
+                  )}
+                </div>
+              ) : <p style={{color:'var(--text-dim)'}}>No resume details added yet.</p>}
+            </div>
+
+            <h4 style={{ fontFamily: 'var(--font-display)', marginBottom: 12 }}>Public Projects</h4>
+            <div className="sd-projects-grid" style={{ marginBottom: 24 }}>
+              {(data?.projects || []).map((p, i) => (
+                <div className="sd-project-card" key={p.id || i}>
                   <div className="sd-project-thumb"><ProjectThumb p={p} /></div>
                   <div className="sd-project-info">
                     <div className="sd-project-title">{p.title}</div>
@@ -456,7 +568,7 @@ function ProfileModal({ user, onClose }) {
                 </div>
               ))}
             </div>
-            {(!data?.projects || data.projects.length === 0) && <div className="empty-state" style={{padding:'14px 0'}}><i className="fa-regular fa-folder-open"/><p>No public projects</p></div>}
+            {(!data?.projects || data.projects.length === 0) && <div className="empty-state" style={{ padding: '14px 0' }}><i className="fa-regular fa-folder-open" /><p>No public projects</p></div>}
           </div>
         )}
       </div>
@@ -477,6 +589,31 @@ function UploadSuccessModal({ onClose }) {
   )
 }
 
+function DeleteConfirmModal({ type, onCancel, onConfirm }) {
+  const isPermanent = type === 'project_permanent'
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-box">
+        <div className="modal-header">
+          <h3><i className="fa-solid fa-triangle-exclamation" style={{color:'var(--red)',marginRight:8}}/>Confirm Delete</h3>
+          <button className="modal-close" onClick={onCancel}><i className="fa-solid fa-xmark"/></button>
+        </div>
+        <div className="modal-body">
+          {isPermanent ? (
+            <p style={{color:'var(--red)'}}>Are you sure you want to permanently delete this project? This action <strong>cannot be undone</strong> and the project will be removed forever.</p>
+          ) : (
+            <p style={{color:'var(--text-muted)'}}>Move this project to trash? You can restore it later from the Trash bin.</p>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button className="btn-cancel" onClick={onCancel}>Cancel</button>
+          <button className="btn-danger" onClick={onConfirm}>{isPermanent ? 'Delete Forever' : 'Move to Trash'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function StudentDashboard() {
   const nav = useNavigate()
   const session = getSession()
@@ -488,7 +625,6 @@ export default function StudentDashboard() {
   const [alerts, setAlerts] = useState([])
   const [notifications, setNotifications] = useState([])
   const [showNotifPanel, setShowNotifPanel] = useState(false)
-  const [seenAlertIds, setSeenAlertIds] = useState(() => { try { return JSON.parse(localStorage.getItem('sdpms_seen_alerts') || '[]') } catch { return [] } })
   const [toastNotif, setToastNotif] = useState(null)
   const [viewAlert, setViewAlert] = useState(null)
   const [deletedAlerts, setDeletedAlerts] = useState(() => { try { return JSON.parse(localStorage.getItem('sdpms_deleted_alerts') || '[]') } catch { return [] } })
@@ -519,9 +655,15 @@ export default function StudentDashboard() {
   const [discoverProfile, setDiscoverProfile] = useState(null)
   const [tplPreviewModal, setTplPreviewModal] = useState(null)
   const [allProjects, setAllProjects] = useState([])
+  const [discoverAllPosts, setDiscoverAllPosts] = useState([])
   const [showImageModal, setShowImageModal] = useState(null)
   const [imgUrl, setImgUrl] = useState('')
   const [imgPreview, setImgPreview] = useState('')
+  const [settingsOpenSection, setSettingsOpenSection] = useState('account')
+  const [faqSearch, setFaqSearch] = useState('')
+  const [reviewRating, setReviewRating] = useState(0)
+  const [reviewComment, setReviewComment] = useState('')
+  const [showReviewThanks, setShowReviewThanks] = useState(false)
   const canvasRef = useRef(null)
   const imgRef = useRef({ img:null, x:0, y:0, w:0, h:0, dragging:false, dx:0, dy:0 })
   const prevNotifCount = useRef(0)
@@ -560,7 +702,14 @@ export default function StudentDashboard() {
     }
   }
 
-  useEffect(() => { loadAll() }, [])
+  async function loadDiscoverPosts() {
+    try {
+      const data = await getDiscover()
+      setDiscoverAllPosts(data || [])
+    } catch {}
+  }
+
+  useEffect(() => { loadAll(); loadDiscoverPosts() }, [])
   useEffect(() => { if (section === 'discover') return; loadAll() }, [section])
 
   useEffect(() => {
@@ -575,6 +724,8 @@ export default function StudentDashboard() {
         }
         const ann = await getAnnouncements()
         setAlerts(ann)
+        const st = await getStudentStats()
+        setStats(st)
       } catch {}
     }, 30000)
     return () => clearInterval(interval)
@@ -608,6 +759,7 @@ export default function StudentDashboard() {
       const projs = await getProjects(true); setAllProjects(projs)
       const st = await getStudentStats(); setStats(st)
       setShowUploadSuccess(true)
+      loadDiscoverPosts()
     } catch (err) {
       console.error('Upload error:', err)
       setUploadFb('⚠ ' + (err.message || 'Upload failed. Check console.'))
@@ -810,6 +962,13 @@ export default function StudentDashboard() {
     { key:'_acc', label:'Account', group:true },
     { key:'settings', icon:'gear', label:'Settings' },
   ]
+
+  const faqData = [
+    { q: 'How do I upload a project?', a: 'Go to Upload Project, fill details, and submit.' },
+    { q: 'Can I change my portfolio design?', a: 'Yes, use the Portfolio Editor.' },
+    { q: 'Is my data secure?', a: 'We use encryption and secure servers.' },
+  ]
+  const filteredFaq = faqData.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()))
 
   if (fullscreenPortfolio) return <FullscreenPortfolio data={portfolioDesign} onClose={()=>setFullscreenPortfolio(false)} />
 
@@ -1301,14 +1460,6 @@ export default function StudentDashboard() {
                   <p style={{color:'var(--text-muted)'}}>No view data yet. Share your portfolio to start tracking!</p>
                 </div>
               )}
-              <div className="sd-card">
-                <h3 className="sd-card-title"><i className="fa-solid fa-fire" style={{color:'#f97316',marginRight:8}}/>Popularity</h3>
-                <div style={{textAlign:'center',padding:'28px 0',color:'var(--text-dim)'}}>
-                  <i className="fa-solid fa-chart-pie" style={{fontSize:'2.5rem',opacity:.3,marginBottom:12,display:'block'}}/>
-                  <p style={{fontWeight:600,color:'var(--text-muted)'}}>Coming Soon</p>
-                  <p style={{fontSize:'.8rem',marginTop:4}}>Detailed popularity metrics & rankings</p>
-                </div>
-              </div>
             </div>
           )}
 
@@ -1324,28 +1475,103 @@ export default function StudentDashboard() {
           )}
 
           {section === 'settings' && (
-            <div className="sd-section"><div className="sd-section-header"><div><h2 className="sd-section-title">Account Settings</h2></div></div>
-              <form className="sd-form-card" onSubmit={saveSettings}>
-                <div className="field-row">
-                  <div className="field-group"><label>Full Name</label><input value={settingsForm.name} onChange={e=>setSettingsForm(f=>({...f,name:e.target.value}))}/></div>
-                  <div className="field-group"><label>Date of Birth</label><input type="date" value={settingsForm.dob||''} onChange={e=>setSettingsForm(f=>({...f,dob:e.target.value}))}/>{computedAge!==''&&<div className="sd-age-note">Age: <strong>{computedAge}</strong></div>}</div>
+            <div className="sd-section">
+              <div className="sd-section-header"><div><h2 className="sd-section-title">Account Settings</h2></div></div>
+              <div className="sd-settings-container">
+                <div className="sd-settings-sidebar">
+                  <button className={`sd-settings-tab ${settingsOpenSection==='account'?'active':''}`} onClick={()=>setSettingsOpenSection('account')}><i className="fa-regular fa-user"/> Account Information</button>
+                  <button className={`sd-settings-tab ${settingsOpenSection==='terms'?'active':''}`} onClick={()=>setSettingsOpenSection('terms')}><i className="fa-regular fa-file-lines"/> Terms of Service</button>
+                  <button className={`sd-settings-tab ${settingsOpenSection==='privacy'?'active':''}`} onClick={()=>setSettingsOpenSection('privacy')}><i className="fa-regular fa-shield"/> Privacy Policy</button>
+                  <button className={`sd-settings-tab ${settingsOpenSection==='about'?'active':''}`} onClick={()=>setSettingsOpenSection('about')}><i className="fa-regular fa-circle-info"/> About Website</button>
+                  <button className={`sd-settings-tab ${settingsOpenSection==='faq'?'active':''}`} onClick={()=>setSettingsOpenSection('faq')}><i className="fa-regular fa-circle-question"/> FAQ</button>
+                  <button className={`sd-settings-tab ${settingsOpenSection==='review'?'active':''}`} onClick={()=>setSettingsOpenSection('review')}><i className="fa-regular fa-star"/> Leave a Review</button>
                 </div>
-                <div className="field-row">
-                  <div className="field-group"><label>Sex</label><select value={settingsForm.sex} onChange={e=>setSettingsForm(f=>({...f,sex:e.target.value}))}><option>Male</option><option>Female</option><option>Prefer not to say</option></select></div>
-                  <div className="field-group"><label>Program</label><input value={settingsForm.program} onChange={e=>setSettingsForm(f=>({...f,program:e.target.value}))} placeholder="BSIT, 3rd Year"/></div>
+                <div className="sd-settings-content">
+                  {settingsOpenSection === 'account' && (
+                    <form className="sd-form-card" onSubmit={saveSettings}>
+                      <h3>Account Information</h3>
+                      <div className="field-row">
+                        <div className="field-group"><label>First Name</label><input placeholder="First name" /></div>
+                        <div className="field-group"><label>Middle Name</label><input placeholder="Middle name" /></div>
+                        <div className="field-group"><label>Last Name</label><input placeholder="Last name" /></div>
+                      </div>
+                      <div className="field-row">
+                        <div className="field-group"><label>Date of Birth</label><input type="date" value={settingsForm.dob||''} onChange={e=>setSettingsForm(f=>({...f,dob:e.target.value}))}/>{computedAge!==''&&<div className="sd-age-note">Age: {computedAge}</div>}</div>
+                        <div className="field-group"><label>Sex</label><select value={settingsForm.sex} onChange={e=>setSettingsForm(f=>({...f,sex:e.target.value}))}><option>Male</option><option>Female</option><option>Prefer not to say</option></select></div>
+                      </div>
+                      <div className="field-group"><label>Program</label><input value={settingsForm.program} onChange={e=>setSettingsForm(f=>({...f,program:e.target.value}))} placeholder="BSIT, 3rd Year"/></div>
+                      <div className="field-group"><label>Address</label><input value={settingsForm.address} onChange={e=>setSettingsForm(f=>({...f,address:e.target.value}))}/></div>
+                      <div className="field-group"><label>Skills</label><input value={settingsForm.skills} onChange={e=>setSettingsForm(f=>({...f,skills:e.target.value}))} placeholder="HTML, CSS, React..."/></div>
+                      <div className="field-group"><label>Change Password</label><input type="password" placeholder="New password" onChange={e=>setSettingsForm(f=>({...f,password:e.target.value}))}/></div>
+                      <button type="submit" className="btn-primary">Save Changes</button>
+                      {settingsFb&&<div className="save-feedback">{settingsFb}</div>}
+                    </form>
+                  )}
+                  {settingsOpenSection === 'terms' && (
+                    <div className="sd-card">
+                      <h3>Terms of Service</h3>
+                      <div style={{maxHeight:400,overflowY:'auto',paddingRight:10}}>
+                        <p>Welcome to Student Digital Portfolio Management System. By using our service, you agree to these terms...</p>
+                        <h4>1. Acceptance</h4><p>By accessing this website, you accept these terms and conditions.</p>
+                        <h4>2. User Accounts</h4><p>You are responsible for maintaining the security of your account.</p>
+                        <h4>3. Content</h4><p>You retain ownership of your content but grant us a license to display it.</p>
+                        <h4>4. Prohibited Conduct</h4><p>No harassment, illegal activities, or infringement.</p>
+                        <h4>5. Termination</h4><p>We may suspend accounts that violate these terms.</p>
+                      </div>
+                    </div>
+                  )}
+                  {settingsOpenSection === 'privacy' && (
+                    <div className="sd-card">
+                      <h3>Privacy Policy</h3>
+                      <p>Your privacy is important to us. We only collect data necessary for service operation.</p>
+                      <p>We do not sell your personal information. All data is encrypted.</p>
+                    </div>
+                  )}
+                  {settingsOpenSection === 'about' && (
+                    <div className="sd-card">
+                      <h3>About SDMS</h3>
+                      <p>Student Digital Portfolio Management System is a platform for students to showcase their academic and creative works.</p>
+                      <p>Version 1.0.0 | Built with React & Django</p>
+                    </div>
+                  )}
+                  {settingsOpenSection === 'faq' && (
+                    <div className="sd-card">
+                      <h3>Frequently Asked Questions</h3>
+                      <input placeholder="Search FAQ..." value={faqSearch} onChange={e=>setFaqSearch(e.target.value)} className="sd-search-input" style={{marginBottom:16}}/>
+                      {filteredFaq.map((f,i)=>(
+                        <details key={i} style={{marginBottom:12,borderBottom:'1px solid var(--card-border)',paddingBottom:8}}>
+                          <summary style={{cursor:'pointer',fontWeight:600}}>{f.q}</summary>
+                          <p style={{marginTop:8,color:'var(--text-muted)'}}>{f.a}</p>
+                        </details>
+                      ))}
+                      <div style={{marginTop:16}}>
+                        <h4>Ask a Question</h4>
+                        <textarea placeholder="Type your question..." rows={2} style={{width:'100%',marginBottom:8}}/>
+                        <button className="btn-primary">Submit</button>
+                      </div>
+                    </div>
+                  )}
+                  {settingsOpenSection === 'review' && (
+                    <div className="sd-card">
+                      <h3>Rate Your Experience</h3>
+                      <div style={{display:'flex',gap:5,marginBottom:12}}>
+                        {[1,2,3,4,5].map(s=>(
+                          <i key={s} className={`fa-${s<=reviewRating?'solid':'regular'} fa-star`} style={{color:'#fbbf24',fontSize:'1.5rem',cursor:'pointer'}} onClick={()=>setReviewRating(s)}/>
+                        ))}
+                      </div>
+                      <textarea placeholder="Your comments..." rows={3} value={reviewComment} onChange={e=>setReviewComment(e.target.value)} style={{width:'100%',marginBottom:12}}/>
+                      <button className="btn-primary" onClick={()=>{setShowReviewThanks(true);setReviewRating(0);setReviewComment('');setTimeout(()=>setShowReviewThanks(false),3000)}}>Submit Review</button>
+                      {showReviewThanks && <div style={{marginTop:10,color:'var(--accent-light)'}}>Thank you! We appreciate your feedback. ❤️</div>}
+                    </div>
+                  )}
                 </div>
-                <div className="field-group"><label>Address</label><input value={settingsForm.address} onChange={e=>setSettingsForm(f=>({...f,address:e.target.value}))}/></div>
-                <div className="field-group"><label>Bio</label><textarea rows={3} value={settingsForm.bio} onChange={e=>setSettingsForm(f=>({...f,bio:e.target.value}))}/></div>
-                <div className="field-group"><label>Skills</label><input value={settingsForm.skills} onChange={e=>setSettingsForm(f=>({...f,skills:e.target.value}))} placeholder="HTML, CSS, React..."/></div>
-                <button type="submit" className="btn-primary"><i className="fa-regular fa-floppy-disk"/> Save Settings</button>
-                {settingsFb&&<div className="save-feedback">{settingsFb}</div>}
-              </form>
+              </div>
             </div>
           )}
         </main>
       </div>
 
-      {discoverPost && <DiscoverPostModal post={discoverPost} onClose={()=>setDiscoverPost(null)} onViewProfile={p=>{setDiscoverPost(null);setDiscoverProfile(p)}} />}
+      {discoverPost && <DiscoverPostModal post={discoverPost} onClose={()=>setDiscoverPost(null)} onViewProfile={p=>{setDiscoverPost(null);setDiscoverProfile(p)}} allPosts={discoverAllPosts} />}
       {discoverProfile && <ProfileModal user={discoverProfile} onClose={()=>setDiscoverProfile(null)} />}
 
       {viewAlert && (
@@ -1378,25 +1604,17 @@ export default function StudentDashboard() {
       )}
 
       {deleteConfirm && (
-        <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)setDeleteConfirm(null)}}>
-          <div className="modal-box">
-            <div className="modal-header"><h3><i className="fa-solid fa-triangle-exclamation" style={{color:'var(--red)',marginRight:8}}/>Confirm Delete</h3><button className="modal-close" onClick={()=>setDeleteConfirm(null)}><i className="fa-solid fa-xmark"/></button></div>
-            <div className="modal-body">
-              {deleteConfirm.type==='project'&&<p style={{color:'var(--text-muted)'}}>Move this project to trash? You can restore it later.</p>}
-              {deleteConfirm.type==='project_permanent'&&<p style={{color:'var(--red)'}}>Permanently delete? This <strong>cannot be undone.</strong></p>}
-            </div>
-            <div className="modal-footer">
-              <button className="btn-cancel" onClick={()=>setDeleteConfirm(null)}>Cancel</button>
-              <button className="btn-danger" onClick={async()=>{
-                if(deleteConfirm.type==='project') await softDeleteProject(deleteConfirm.id)
-                if(deleteConfirm.type==='project_permanent') await permanentDeleteProject(deleteConfirm.id)
-                const projs = await getProjects(true); setAllProjects(projs)
-                const st = await getStudentStats(); setStats(st)
-                setDeleteConfirm(null)
-              }}>{deleteConfirm.type==='project_permanent'?'Delete Forever':'Move to Trash'}</button>
-            </div>
-          </div>
-        </div>
+        <DeleteConfirmModal
+          type={deleteConfirm.type}
+          onCancel={()=>setDeleteConfirm(null)}
+          onConfirm={async()=>{
+            if(deleteConfirm.type==='project') await softDeleteProject(deleteConfirm.id)
+            if(deleteConfirm.type==='project_permanent') await permanentDeleteProject(deleteConfirm.id)
+            const projs = await getProjects(true); setAllProjects(projs)
+            const st = await getStudentStats(); setStats(st)
+            setDeleteConfirm(null)
+          }}
+        />
       )}
 
       {showUploadSuccess && <UploadSuccessModal onClose={()=>{ setShowUploadSuccess(false); nav2('projects') }} />}
