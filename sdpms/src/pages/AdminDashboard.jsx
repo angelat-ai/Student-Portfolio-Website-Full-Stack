@@ -24,11 +24,23 @@ function buildCalendar(year, month) {
 function MiniChart({ data, color = '#2563eb' }) {
   if (!data || data.length === 0) return null
   const max = Math.max(...data.map(d => d.views), 1)
+  const ySteps = 4
   return (
-    <div style={{display:'flex',alignItems:'flex-end',gap:3,height:60}}>
-      {data.slice(-14).map((d,i) => (
-        <div key={i} style={{flex:1,background:d.views>0?color:'rgba(255,255,255,.06)',borderRadius:'3px 3px 0 0',height:`${Math.max((d.views/max)*100,4)}%`,transition:'height .3s'}} title={`${d.date}: ${d.views}`}/>
-      ))}
+    <div style={{position:'relative', paddingLeft: 40, paddingBottom: 20, height: 120}}>
+      <div style={{position:'absolute', left:0, top:0, bottom:20, width:35, display:'flex', flexDirection:'column', justifyContent:'space-between', alignItems:'flex-end', fontSize:'.65rem', color:'var(--text-dim)'}}>
+        {Array.from({length: ySteps+1}).map((_, i) => {
+          const val = Math.round((max / ySteps) * (ySteps - i))
+          return <span key={i}>{val}</span>
+        })}
+      </div>
+      <div style={{display:'flex', alignItems:'flex-end', gap:3, height:'100%', marginLeft:5}}>
+        {data.slice(-14).map((d, i) => (
+          <div key={i} style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center'}}>
+            <div style={{width:'100%', background:d.views>0?color:'rgba(255,255,255,.06)', borderRadius:'3px 3px 0 0', height:`${Math.max((d.views/max)*80, 4)}%`, transition:'height .3s'}} title={`${d.date}: ${d.views} views`}/>
+            <span style={{fontSize:'.55rem', color:'var(--text-dim)', marginTop:4, transform:'rotate(-45deg)', transformOrigin:'top left'}}>{d.date.slice(5)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -72,6 +84,10 @@ export default function AdminDashboard() {
   const [showTplTrash, setShowTplTrash] = useState(false)
   const [tplDeleteConfirm, setTplDeleteConfirm] = useState(null)
 
+  const [projectsByDay, setProjectsByDay] = useState([])
+  const [usersByDay, setUsersByDay] = useState([])
+  const [flagsByDay, setFlagsByDay] = useState([])
+
   const dateStr = new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' })
   const today = new Date()
 
@@ -90,6 +106,9 @@ export default function AdminDashboard() {
       setContentForm(content)
       setFlagged(flags)
       setNotifications(notifs)
+      setProjectsByDay(st.projects_by_day || [])
+      setUsersByDay(st.users_by_day || [])
+      setFlagsByDay(st.flags_by_day || [])
     } catch {}
   }
 
@@ -139,7 +158,14 @@ export default function AdminDashboard() {
 
   async function doSaveContent(e) {
     e.preventDefault()
-    try { await saveSiteContent(contentForm); setContentFb('✓ Content saved!'); setTimeout(() => setContentFb(''), 3000) } catch {}
+    try {
+      await saveSiteContent(contentForm)
+      setContentFb('✓ Content saved!')
+      setTimeout(() => setContentFb(''), 3000)
+      window.dispatchEvent(new Event('siteContentUpdated'))
+    } catch (err) {
+      setContentFb('⚠ ' + (err.message || 'Failed to save'))
+    }
   }
 
   async function doAddCategory(e) {
@@ -212,8 +238,14 @@ export default function AdminDashboard() {
   const unreadNotifs = notifications.filter(n => !n.is_read).length
 
   const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
-  const dataMap = {}
-  ;(stats.views_by_day||[]).forEach(d => { dataMap[d.date] = d.views })
+  const viewsMap = {}
+  ;(stats.views_by_day||[]).forEach(d => { viewsMap[d.date] = d.views })
+  const projectsMap = {}
+  ;(projectsByDay||[]).forEach(d => { projectsMap[d.date] = d.count || d.projects || 0 })
+  const usersMap = {}
+  ;(usersByDay||[]).forEach(d => { usersMap[d.date] = d.count || d.users || 0 })
+  const flagsMap = {}
+  ;(flagsByDay||[]).forEach(d => { flagsMap[d.date] = d.count || d.flags || 0 })
 
   const sideItems = [
     { key:'dashboard', icon:'gauge', label:'Dashboard', group:'Overview' },
@@ -601,11 +633,11 @@ export default function AdminDashboard() {
 
       {showCal && (
         <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)setShowCal(false)}}>
-          <div className="modal-box">
+          <div className="modal-box wide">
             <div className="modal-header">
               <h3><i className="fa-regular fa-calendar"/> Calendar</h3>
               <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                {calDay&&<button onClick={()=>setCalDay(null)} style={{background:'none',border:'none',color:'var(--accent-light)',fontSize:'.76rem',cursor:'pointer'}}>← Back to today</button>}
+                {calDay&&<button onClick={()=>setCalDay(null)} style={{background:'none',border:'none',color:'var(--accent-light)',fontSize:'.76rem',cursor:'pointer'}}>← Back to month</button>}
                 <button className="modal-close" onClick={()=>setShowCal(false)}><i className="fa-solid fa-xmark"/></button>
               </div>
             </div>
@@ -621,27 +653,49 @@ export default function AdminDashboard() {
                 {Array(daysInMonth).fill(null).map((_,i)=>{
                   const d=i+1
                   const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-                  const views=dataMap[ds]||0
+                  const views = viewsMap[ds] || 0
+                  const projects = projectsMap[ds] || 0
+                  const users = usersMap[ds] || 0
+                  const flags = flagsMap[ds] || 0
                   const isToday=d===today.getDate()&&calMonth===today.getMonth()&&calYear===today.getFullYear()
                   const isSel=calDay===d
                   return (
                     <div key={d} className={`ad-cal-day${isToday?' today':''}${isSel?' selected':''}`} onClick={()=>setCalDay(d)} style={{position:'relative'}}>
-                      {d}
-                      {views>0&&<div style={{width:4,height:4,borderRadius:'50%',background:'var(--accent)',margin:'2px auto 0'}}/>}
+                      <span style={{fontWeight:isToday?700:400}}>{d}</span>
+                      <div style={{display:'flex',gap:3,justifyContent:'center',marginTop:2}}>
+                        {views>0 && <span style={{width:6,height:6,borderRadius:'50%',background:'#3b82f6'}} title={`${views} views`}/>}
+                        {projects>0 && <span style={{width:6,height:6,borderRadius:'50%',background:'#10b981'}} title={`${projects} projects`}/>}
+                        {users>0 && <span style={{width:6,height:6,borderRadius:'50%',background:'#a855f7'}} title={`${users} new users`}/>}
+                        {flags>0 && <span style={{width:6,height:6,borderRadius:'50%',background:'#ef4444'}} title={`${flags} flags`}/>}
+                      </div>
                     </div>
                   )
                 })}
               </div>
+              <div style={{marginTop:16, display:'flex', gap:16, justifyContent:'center', fontSize:'.72rem', color:'var(--text-dim)'}}>
+                <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#3b82f6',marginRight:4}}/> Views</span>
+                <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#10b981',marginRight:4}}/> Projects</span>
+                <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#a855f7',marginRight:4}}/> Users</span>
+                <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#ef4444',marginRight:4}}/> Flags</span>
+              </div>
               {calDay&&(()=>{
                 const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(calDay).padStart(2,'0')}`
-                const views=dataMap[ds]||0
+                const views = viewsMap[ds] || 0
+                const projects = projectsMap[ds] || 0
+                const users = usersMap[ds] || 0
+                const flags = flagsMap[ds] || 0
                 const isFuture=ds>todayStr
                 return (
-                  <div className="ad-cal-day-view">
-                    <h4>{MONTHS[calMonth]} {calDay}, {calYear}</h4>
-                    {isFuture ? <p style={{color:'var(--text-dim)',fontSize:'.84rem'}}>🔮 Cannot predict future data</p>
-                      : views===0 ? <p style={{color:'var(--text-dim)',fontSize:'.84rem'}}>No activity on this day.</p>
-                      : <p style={{color:'var(--accent-light)',fontSize:'.84rem'}}>👁 {views} total views on this day</p>}
+                  <div className="ad-cal-day-view" style={{marginTop:20, padding:16, background:'rgba(37,99,235,.06)', borderRadius:12}}>
+                    <h4 style={{marginBottom:12}}>{MONTHS[calMonth]} {calDay}, {calYear}</h4>
+                    {isFuture ? <p style={{color:'var(--text-dim)'}}>🔮 Future date – no data yet</p> : (
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                        <div><i className="fa-solid fa-eye" style={{color:'#3b82f6'}}/> Views: <strong>{views}</strong></div>
+                        <div><i className="fa-solid fa-folder" style={{color:'#10b981'}}/> Projects: <strong>{projects}</strong></div>
+                        <div><i className="fa-solid fa-user" style={{color:'#a855f7'}}/> New Users: <strong>{users}</strong></div>
+                        <div><i className="fa-solid fa-flag" style={{color:'#ef4444'}}/> Flags: <strong>{flags}</strong></div>
+                      </div>
+                    )}
                   </div>
                 )
               })()}

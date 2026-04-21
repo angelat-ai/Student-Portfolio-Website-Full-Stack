@@ -31,7 +31,29 @@ export default function LandingPage() {
         setCategories(cats)
       }
     }).catch(() => {})
-    getSiteContent().then(data => { if (data) setContent(data) }).catch(() => {})
+    getSiteContent().then(data => {
+      if (data) {
+        setContent(data)
+        if (data.cats) {
+          setCategories(['All', ...data.cats.split(',').map(c => c.trim()).filter(Boolean)])
+        }
+      }
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const handleContentUpdate = () => {
+      getSiteContent().then(data => {
+        if (data) {
+          setContent(data)
+          if (data.cats) {
+            setCategories(['All', ...data.cats.split(',').map(c => c.trim()).filter(Boolean)])
+          }
+        }
+      }).catch(() => {})
+    }
+    window.addEventListener('siteContentUpdated', handleContentUpdate)
+    return () => window.removeEventListener('siteContentUpdated', handleContentUpdate)
   }, [])
 
   useEffect(() => {
