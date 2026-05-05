@@ -30,7 +30,17 @@ const UPLOAD_TYPES = [
   { key: 'art', icon: 'fa-solid fa-paintbrush', label: 'Art', accept: 'image/*,.svg,.ai,.psd' },
 ]
 
-const BLANK_UPLOAD = { title:'', description:'', category:'', status:'Completed', image_url:'', imageFile:null, fileType:'image', canvaUrl:'', skills:[], githubUrl:'', deployUrl:'', figmaUrl:'', adobeUrl:'', completion_date:'', privacy:'public' }
+const FILE_TYPE_META = {
+  doc:  { icon: 'fa-regular fa-file-lines',      label: 'Document',   color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
+  ppt:  { icon: 'fa-regular fa-file-powerpoint', label: 'PowerPoint', color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
+  pdf:  { icon: 'fa-regular fa-file-pdf',        label: 'PDF',        color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+  video:{ icon: 'fa-solid fa-video',             label: 'Video',      color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
+  code: { icon: 'fa-solid fa-code',              label: 'Code',       color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+  art:  { icon: 'fa-solid fa-paintbrush',        label: 'Art',        color: '#ec4899', bg: 'rgba(236,72,153,0.12)' },
+  gif:  { icon: 'fa-regular fa-file-image',      label: 'GIF',        color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+}
+
+const BLANK_UPLOAD = { title:'', description:'', category:'', status:'Completed', imageFile:null, fileType:'image', canvaUrl:'', skills:[], githubUrl:'', deployUrl:'', figmaUrl:'', adobeUrl:'', completion_date:'', privacy:'public' }
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
@@ -39,13 +49,87 @@ function getImageSrc(p) {
   return p.effective_image || p.image_url || ''
 }
 
+function getFileViewerUrl(url) {
+  if (!url) return null
+  if (url.startsWith('data:')) return null
+  return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
+}
+
+function isViewableDoc(p) {
+  const ft = p?.file_type || p?.fileType || ''
+  return ['doc','ppt','pdf'].includes(ft)
+}
+
+function FileTypeBadge({ type, filename }) {
+  const meta = FILE_TYPE_META[type] || FILE_TYPE_META['doc']
+  return (
+    <div style={{
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+      width:'100%', height:'100%', gap:10,
+      background: meta.bg,
+    }}>
+      <i className={meta.icon} style={{fontSize:'3rem', color:meta.color}} />
+      <span style={{fontSize:'.78rem', color:meta.color, fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em'}}>{meta.label}</span>
+      {filename && <span style={{fontSize:'.68rem', color:'var(--text-muted)', maxWidth:'80%', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'center'}}>{filename}</span>}
+    </div>
+  )
+}
+
 function ProjectThumb({ p, style = {} }) {
   const [err, setErr] = useState(false)
   const src = getImageSrc(p)
+  const ft = p?.file_type || p?.fileType || ''
   if (src && !err) {
     return <img src={src} alt={p.title} onError={() => setErr(true)} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block', ...style }} />
   }
+  if (ft && ft !== 'image') {
+    return <FileTypeBadge type={ft} filename={p?.original_filename || p?.title} />
+  }
   return <i className="fa-regular fa-image" style={{ fontSize: '2rem', color: 'var(--text-dim)', ...style }} />
+}
+
+async function generateThumbnailFromFile(file, fileType) {
+  return new Promise((resolve) => {
+    if (!file) { resolve(null); return }
+
+    if (fileType === 'image' || fileType === 'art' || fileType === 'gif' || file.type?.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (e) => resolve(e.target.result)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(file)
+      return
+    }
+
+    const meta = FILE_TYPE_META[fileType] || FILE_TYPE_META['doc']
+    const canvas = document.createElement('canvas')
+    canvas.width = 800; canvas.height = 560
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#0d1f3a'
+    ctx.fillRect(0, 0, 800, 560)
+
+    const gradient = ctx.createLinearGradient(0, 0, 800, 560)
+    gradient.addColorStop(0, meta.bg.replace('0.12)', '0.25)'))
+    gradient.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, 800, 560)
+
+    ctx.font = '64px Arial'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = meta.color
+    ctx.fillText(meta.label === 'Document' ? '📄' : meta.label === 'PowerPoint' ? '📊' : meta.label === 'PDF' ? '📕' : '📁', 400, 220)
+
+    ctx.font = 'bold 32px Arial'
+    ctx.fillStyle = meta.color
+    ctx.fillText(meta.label.toUpperCase(), 400, 310)
+
+    ctx.font = '20px Arial'
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'
+    const displayName = file.name ? (file.name.length > 40 ? file.name.slice(0,40) + '…' : file.name) : ''
+    ctx.fillText(displayName, 400, 360)
+
+    resolve(canvas.toDataURL('image/jpeg', 0.85))
+  })
 }
 
 function PortfolioCanvas({ data }) {
@@ -133,80 +217,67 @@ function CategoryDropdown({ value, onChange }) {
   )
 }
 
-function ViewsChart({ data }) {
-  const today = new Date()
-  const [selectedDate, setSelectedDate] = useState(null)
-  const [calYear, setCalYear] = useState(today.getFullYear())
-  const [calMonth, setCalMonth] = useState(today.getMonth())
-  const [view, setView] = useState('week')
-
-  const last7 = data.slice(-7)
-  const last30 = data.slice(-30)
-  const chartData = view === 'week' ? last7 : last30
-  const maxVal = Math.max(...chartData.map(d=>d.views), 1)
-
-  const firstDay = new Date(calYear, calMonth, 1).getDay()
-  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate()
-
-  const dataMap = {}
-  data.forEach(d => { dataMap[d.date] = d.views })
-
-  function toDateStr(y, m, d) {
-    return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-  }
-
-  const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate())
-  const selectedViews = selectedDate ? (dataMap[selectedDate] || 0) : null
-  const isFuture = selectedDate && selectedDate > todayStr
+function LineGraph({ data, color = '#2563eb', label = 'Views', icon = 'fa-eye', total = 0, sub = '' }) {
+  const vals = (data || []).map(d => d.views || d.count || d.value || 0)
+  const max = Math.max(...vals, 1)
+  const W = 300, H = 80, pad = 6
+  const pts = vals.map((v, i) => {
+    const x = pad + (i / Math.max(vals.length - 1, 1)) * (W - pad * 2)
+    const y = H - pad - ((v / max) * (H - pad * 2))
+    return `${x},${y}`
+  }).join(' ')
+  const area = vals.length > 1 ? `M${pad},${H} L${pts.split(' ').map((p,i)=>i===0?p.replace(',',` L`):p).join(' L')} L${W-pad},${H} Z` : ''
+  const last7 = vals.slice(-7)
+  const prev7 = vals.slice(-14, -7)
+  const lastSum = last7.reduce((a,b)=>a+b,0)
+  const prevSum = prev7.reduce((a,b)=>a+b,0)
+  const trend = prevSum === 0 ? null : Math.round(((lastSum - prevSum) / prevSum) * 100)
 
   return (
-    <div style={{background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:13,padding:20,marginBottom:20}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-        <h3 style={{fontFamily:'var(--font-display)',fontSize:'1rem',fontWeight:700}}>Portfolio Views</h3>
-        <div style={{display:'flex',gap:6}}>
-          <button onClick={()=>setView('week')} style={{padding:'4px 13px',borderRadius:20,border:'1.5px solid var(--card-border)',background:view==='week'?'rgba(37,99,235,.2)':'none',color:view==='week'?'var(--accent-light)':'var(--text-muted)',cursor:'pointer',fontSize:'.76rem'}}>7 Days</button>
-          <button onClick={()=>setView('month')} style={{padding:'4px 13px',borderRadius:20,border:'1.5px solid var(--card-border)',background:view==='month'?'rgba(37,99,235,.2)':'none',color:view==='month'?'var(--accent-light)':'var(--text-muted)',cursor:'pointer',fontSize:'.76rem'}}>30 Days</button>
+    <div className="analytics-graph-card">
+      <div className="analytics-graph-header">
+        <div className="analytics-graph-icon" style={{background:`${color}22`,color}}>
+          <i className={`fa-solid ${icon}`}/>
         </div>
-      </div>
-      <div style={{display:'flex',alignItems:'flex-end',gap:4,height:100,marginBottom:10}}>
-        {chartData.map((d,i)=>(
-          <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-            <div style={{width:'100%',background:d.views>0?'var(--accent)':'rgba(255,255,255,.06)',borderRadius:'4px 4px 0 0',height:`${Math.max((d.views/maxVal)*100,4)}%`,transition:'height .3s',cursor:'pointer',position:'relative'}} title={`${d.date}: ${d.views} views`}/>
-            <span style={{fontSize:'.6rem',color:'var(--text-dim)',transform:'rotate(-45deg)',transformOrigin:'top left',whiteSpace:'nowrap',marginTop:4}}>{d.date.slice(5)}</span>
-          </div>
-        ))}
-      </div>
-      <div style={{marginTop:24,borderTop:'1px solid var(--card-border)',paddingTop:16}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-          <button onClick={()=>{let m=calMonth-1,y=calYear;if(m<0){m=11;y--}setCalMonth(m);setCalYear(y)}} style={{background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'1rem'}}>&#8249;</button>
-          <span style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:'.9rem'}}>{MONTHS[calMonth]} {calYear}</span>
-          <button onClick={()=>{let m=calMonth+1,y=calYear;if(m>11){m=0;y++}setCalMonth(m);setCalYear(y)}} style={{background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'1rem'}}>&#8250;</button>
+        <div>
+          <div className="analytics-graph-label">{label}</div>
+          {sub && <div className="analytics-graph-sub">{sub}</div>}
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,textAlign:'center'}}>
-          {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=><div key={d} style={{fontSize:'.64rem',color:'var(--text-dim)',padding:'2px 0'}}>{d}</div>)}
-          {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`}/>)}
-          {Array(daysInMonth).fill(null).map((_,i)=>{
-            const d=i+1
-            const ds=toDateStr(calYear,calMonth,d)
-            const views=dataMap[ds]||0
-            const isToday=ds===todayStr
-            const isSel=ds===selectedDate
-            const future=ds>todayStr
-            return (
-              <div key={d} onClick={()=>setSelectedDate(ds)} style={{padding:'4px 2px',borderRadius:6,cursor:'pointer',background:isSel?'rgba(37,99,235,.3)':isToday?'rgba(37,99,235,.12)':'none',border:isToday?'1.5px solid var(--accent)':'1.5px solid transparent',color:future?'var(--text-dim)':views>0?'var(--accent-light)':'var(--text-muted)',fontSize:'.74rem',fontWeight:isToday?700:400,transition:'background .12s'}}>
-                {d}
-                {views>0&&!future&&<div style={{width:4,height:4,borderRadius:'50%',background:'var(--accent)',margin:'2px auto 0'}}/>}
-              </div>
-            )
-          })}
-        </div>
-        {selectedDate && (
-          <div style={{marginTop:12,padding:'10px 13px',background:'rgba(37,99,235,.08)',borderRadius:9,fontSize:'.84rem'}}>
-            {isFuture ? <span style={{color:'var(--text-dim)'}}>🔮 Cannot predict future data</span>
-              : selectedViews===0 ? <span style={{color:'var(--text-dim)'}}>📭 No activity on {selectedDate}</span>
-              : <span style={{color:'var(--accent-light)'}}>👁 {selectedViews} views on {selectedDate}</span>}
+        {trend !== null && (
+          <div className={`analytics-graph-trend ${trend >= 0 ? 'up' : 'down'}`}>
+            <i className={`fa-solid fa-arrow-trend-${trend >= 0 ? 'up' : 'down'}`}/>
+            {Math.abs(trend)}%
           </div>
         )}
+      </div>
+      <div className="analytics-graph-total" style={{color}}>{total.toLocaleString()}</div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:'visible', marginTop:8}}>
+        <defs>
+          <linearGradient id={`grad-${label}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.25"/>
+            <stop offset="100%" stopColor={color} stopOpacity="0.01"/>
+          </linearGradient>
+        </defs>
+        {vals.length > 1 && (
+          <>
+            <path d={`M${pts.split(' ')[0].split(',')[0]},${H} L${pts.split(' ').join(' L')} L${pts.split(' ')[pts.split(' ').length-1].split(',')[0]},${H} Z`}
+              fill={`url(#grad-${label})`}/>
+            <polyline points={pts} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            {vals.map((v,i)=>{
+              const x = pad + (i / Math.max(vals.length-1,1)) * (W-pad*2)
+              const y = H - pad - ((v/max)*(H-pad*2))
+              return <circle key={i} cx={x} cy={y} r="3" fill={color} opacity={i===vals.length-1?1:0.4}/>
+            })}
+          </>
+        )}
+        {vals.length <= 1 && (
+          <text x={W/2} y={H/2} textAnchor="middle" fill="rgba(255,255,255,0.15)" fontSize="12">No data yet</text>
+        )}
+      </svg>
+      <div className="analytics-graph-dates">
+        {(data||[]).slice(-7).map((d,i)=>(
+          <span key={i}>{(d.date||'').slice(5)}</span>
+        ))}
       </div>
     </div>
   )
@@ -286,11 +357,19 @@ function DiscoverGrid({ onViewPost, onViewProfile }) {
         <div className="discover-grid">
           {filtered.map(post => {
             const imgSrc = getImageSrc(post)
+            const ft = post.file_type || post.fileType || ''
             return (
-              <div key={post.id} className="discover-grid-card" onMouseEnter={()=>setHoveredId(post.id)} onMouseLeave={()=>setHoveredId(null)} onClick={()=>{incrementProjectViews(post.id).catch(()=>{}); onViewPost(post)}}>
+              <div key={post.id} className="discover-grid-card" onMouseEnter={()=>setHoveredId(post.id)} onMouseLeave={()=>setHoveredId(null)} onClick={()=>{incrementProjectViews(post.id).catch(()=>{}); onViewPost(post, filtered)}}>
                 <div className="discover-grid-thumb">
                   {imgSrc ? <img src={imgSrc} alt={post.title} onError={e => { e.target.style.display='none' }} /> : null}
-                  {!imgSrc && <div className="discover-grid-placeholder"><i className="fa-regular fa-image" /></div>}
+                  {!imgSrc && ft && ft !== 'image' ? (
+                    <div style={{width:'100%',height:'100%'}}><FileTypeBadge type={ft} filename={post.original_filename || post.title} /></div>
+                  ) : (!imgSrc && <div className="discover-grid-placeholder"><i className="fa-regular fa-image" /></div>)}
+                  {ft && ft !== 'image' && (
+                    <div style={{position:'absolute',top:8,right:8,background:'rgba(0,0,0,0.7)',padding:'2px 8px',borderRadius:20,fontSize:'.68rem',color:(FILE_TYPE_META[ft]||{}).color||'#fff',fontWeight:700,display:'flex',alignItems:'center',gap:4}}>
+                      <i className={(FILE_TYPE_META[ft]||{}).icon||'fa-regular fa-file'}/> {(FILE_TYPE_META[ft]||{}).label||ft}
+                    </div>
+                  )}
                   {hoveredId === post.id && (
                     <div className="discover-grid-hover">
                       <div className="discover-hover-stats">
@@ -330,18 +409,32 @@ function DiscoverPostModal({ post, onClose, onViewProfile, allPosts = [] }) {
   const [rating, setRating] = useState(0)
   const [hoverRating, setHoverRating] = useState(0)
   const [showReviewThanks, setShowReviewThanks] = useState(false)
-  const imgSrc = getImageSrc(post)
+  const [currentPost, setCurrentPost] = useState(post)
+  const imgSrc = getImageSrc(currentPost)
+  const ft = currentPost.file_type || currentPost.fileType || ''
+  const viewerUrl = currentPost.file_url ? getFileViewerUrl(currentPost.file_url) : null
+  const [showViewer, setShowViewer] = useState(false)
 
-  const currentIndex = allPosts.findIndex(p => p.id === post.id)
+  const currentIndex = allPosts.findIndex(p => p.id === currentPost.id)
   const prevPost = currentIndex > 0 ? allPosts[currentIndex - 1] : null
   const nextPost = currentIndex < allPosts.length - 1 ? allPosts[currentIndex + 1] : null
 
+  function goTo(p) {
+    setCurrentPost(p)
+    setComments(p.comments || [])
+    setLikeCount(p.like_count || 0)
+    setLiked(p.liked_by_me || false)
+    setCommentText('')
+    setRating(0)
+    setShowViewer(false)
+  }
+
   async function handleLike() {
-    try { const data = await toggleLike(post.id); setLiked(data.liked); setLikeCount(data.count) } catch {}
+    try { const data = await toggleLike(currentPost.id); setLiked(data.liked); setLikeCount(data.count) } catch {}
   }
   async function handleComment() {
     if (!commentText.trim()) return
-    try { const c = await addComment(post.id, commentText); setComments(prev => [...prev, c]); setCommentText('') } catch {}
+    try { const c = await addComment(currentPost.id, commentText); setComments(prev => [...prev, c]); setCommentText('') } catch {}
   }
 
   function submitReview() {
@@ -356,48 +449,75 @@ function DiscoverPostModal({ post, onClose, onViewProfile, allPosts = [] }) {
       <div className="discover-modal">
         <button className="discover-modal-close" onClick={onClose}><i className="fa-solid fa-xmark" /></button>
         <div className="discover-modal-left" style={{position:'relative'}}>
-          {imgSrc ? <img src={imgSrc} alt={post.title} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{e.target.style.display='none'}}/> : null}
-          <div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#1a3a8f,#2563eb44)',display:imgSrc?'none':'flex',alignItems:'center',justifyContent:'center',fontSize:'4rem',color:'rgba(255,255,255,0.2)'}}><i className="fa-regular fa-image"/></div>
-          <div style={{position:'absolute',bottom:10,right:10,display:'flex',gap:5}}>
-            <span style={{background:'rgba(0,0,0,0.6)',color:'#fff',padding:'2px 8px',borderRadius:20,fontSize:'.7rem'}}><i className="fa-solid fa-eye"/> {post.views||0}</span>
+          {showViewer && viewerUrl ? (
+            <iframe
+              src={viewerUrl}
+              style={{width:'100%',height:'100%',border:'none',background:'#fff'}}
+              title="Document Viewer"
+            />
+          ) : imgSrc ? (
+            <img src={imgSrc} alt={currentPost.title} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{e.target.style.display='none'}}/>
+          ) : ft && ft !== 'image' ? (
+            <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <FileTypeBadge type={ft} filename={currentPost.original_filename || currentPost.title} />
+            </div>
+          ) : (
+            <div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#1a3a8f,#2563eb44)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'4rem',color:'rgba(255,255,255,0.2)'}}><i className="fa-regular fa-image"/></div>
+          )}
+
+          {isViewableDoc(currentPost) && (
+            <div style={{position:'absolute',bottom:10,left:10,right:10,display:'flex',gap:6,justifyContent:'center'}}>
+              <button className="doc-viewer-btn" onClick={()=>setShowViewer(v=>!v)}>
+                <i className={`fa-solid fa-${showViewer?'image':'eye'}`}/> {showViewer ? 'Show Thumbnail' : 'View Document'}
+              </button>
+              {currentPost.file_url && (
+                <a href={currentPost.file_url} download target="_blank" rel="noreferrer" className="doc-viewer-btn">
+                  <i className="fa-solid fa-download"/> Download
+                </a>
+              )}
+            </div>
+          )}
+
+          <div style={{position:'absolute',top:10,right:10,display:'flex',gap:5}}>
+            <span style={{background:'rgba(0,0,0,0.6)',color:'#fff',padding:'2px 8px',borderRadius:20,fontSize:'.7rem'}}><i className="fa-solid fa-eye"/> {currentPost.views||0}</span>
           </div>
           {prevPost && (
-            <button className="discover-nav-arrow left" onClick={(e)=>{e.stopPropagation(); onClose(); setTimeout(() => onViewProfile(prevPost), 50)}}>
+            <button className="discover-nav-arrow left" onClick={e=>{e.stopPropagation(); goTo(prevPost)}}>
               <i className="fa-solid fa-chevron-left"/>
             </button>
           )}
           {nextPost && (
-            <button className="discover-nav-arrow right" onClick={(e)=>{e.stopPropagation(); onClose(); setTimeout(() => onViewProfile(nextPost), 50)}}>
+            <button className="discover-nav-arrow right" onClick={e=>{e.stopPropagation(); goTo(nextPost)}}>
               <i className="fa-solid fa-chevron-right"/>
             </button>
           )}
         </div>
         <div className="discover-modal-right">
-          <div className="discover-modal-header" onClick={()=>onViewProfile(post)} style={{cursor:'pointer'}}>
+          <div className="discover-modal-header" onClick={()=>onViewProfile(currentPost)} style={{cursor:'pointer'}}>
             <div className="discover-avatar">
-              {post.owner_avatar ? <img src={post.owner_avatar} alt="" onError={e=>e.target.style.display='none'} /> : <i className="fa-solid fa-user" />}
+              {currentPost.owner_avatar ? <img src={currentPost.owner_avatar} alt="" onError={e=>e.target.style.display='none'} /> : <i className="fa-solid fa-user" />}
             </div>
             <div>
-              <div className="discover-author">{post.owner_name}</div>
-              <div className="discover-meta">{post.category} · {post.status}</div>
+              <div className="discover-author">{currentPost.owner_name}</div>
+              <div className="discover-meta">{currentPost.category} · {currentPost.status}</div>
             </div>
             <div style={{marginLeft:'auto',fontSize:'.74rem',color:'var(--accent-light)'}}>View Profile →</div>
           </div>
           <div className="discover-modal-body">
-            <div className="discover-title" style={{fontSize:'1.1rem',marginBottom:8}}>{post.title}</div>
-            {post.description && <p style={{color:'var(--text-muted)',fontSize:'.86rem',marginBottom:12,lineHeight:1.6}}>{post.description}</p>}
-            {post.skills && post.skills.length > 0 && (
+            <div className="discover-title" style={{fontSize:'1.1rem',marginBottom:8}}>{currentPost.title}</div>
+            {currentPost.description && <p style={{color:'var(--text-muted)',fontSize:'.86rem',marginBottom:12,lineHeight:1.6}}>{currentPost.description}</p>}
+            {currentPost.skills && currentPost.skills.length > 0 && (
               <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:12}}>
-                {post.skills.map(s=><span key={s} className="sd-skill-pill">{s}</span>)}
+                {currentPost.skills.map(s=><span key={s} className="sd-skill-pill">{s}</span>)}
               </div>
             )}
             <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
-              {post.github_url && <a href={post.github_url} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-brands fa-github"/> GitHub</a>}
-              {post.deploy_url && <a href={post.deploy_url} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-solid fa-globe"/> Live</a>}
-              {post.figma_url && <a href={post.figma_url} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-solid fa-pen-ruler"/> Figma</a>}
+              {currentPost.github_url && <a href={currentPost.github_url} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-brands fa-github"/> GitHub</a>}
+              {currentPost.deploy_url && <a href={currentPost.deploy_url} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-solid fa-globe"/> Live</a>}
+              {currentPost.figma_url && <a href={currentPost.figma_url} target="_blank" rel="noreferrer" className="sd-proj-link"><i className="fa-solid fa-pen-ruler"/> Figma</a>}
             </div>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,color:'var(--text-muted)',fontSize:'.8rem'}}>
-              <span><i className="fa-solid fa-eye"/> {post.views||0} views</span>
+              <span><i className="fa-solid fa-eye"/> {currentPost.views||0} views</span>
               <span><i className="fa-solid fa-heart"/> {likeCount} likes</span>
             </div>
             <div style={{marginBottom:12}}>
@@ -460,9 +580,7 @@ function ProfileModal({ user, onClose }) {
   }, [user])
 
   const scrollToSection = (ref) => {
-    if (ref.current) {
-      ref.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
+    if (ref.current) ref.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   if (fullscreen && data?.design) return <FullscreenPortfolio data={data.design} onClose={() => setFullscreen(false)} />
@@ -619,7 +737,7 @@ export default function StudentDashboard() {
   const session = getSession()
   const [section, setSection] = useState('dashboard')
   const [portfolioTab, setPortfolioTab] = useState('pprojects')
-  const [stats, setStats] = useState({ projects:0, views:0, clicks:0, reviews:0, views_by_day:[] })
+  const [stats, setStats] = useState({ projects:0, views:0, clicks:0, reviews:0, views_by_day:[], likes_by_day:[], comments_by_day:[], projects_by_day:[] })
   const [user, setUser] = useState(session)
   const [profile, setProfile] = useState({ about_bio:'', about_interests:'', about_languages:'', about_github:'', about_linkedin:'', resume_data:{}, resume_template:0, avatar_data_url:'', cover_data_url:'' })
   const [alerts, setAlerts] = useState([])
@@ -638,6 +756,7 @@ export default function StudentDashboard() {
   const [resumeData, setResumeData] = useState({})
   const [uploadForm, setUploadForm] = useState(BLANK_UPLOAD)
   const [uploadFb, setUploadFb] = useState('')
+  const [uploadGenerating, setUploadGenerating] = useState(false)
   const [showUploadSuccess, setShowUploadSuccess] = useState(false)
   const [editProjectModal, setEditProjectModal] = useState(false)
   const [editingProject, setEditingProject] = useState(null)
@@ -653,9 +772,9 @@ export default function StudentDashboard() {
   const [skillSearch, setSkillSearch] = useState('')
   const [discoverPost, setDiscoverPost] = useState(null)
   const [discoverProfile, setDiscoverProfile] = useState(null)
+  const [discoverAllPosts, setDiscoverAllPosts] = useState([])
   const [tplPreviewModal, setTplPreviewModal] = useState(null)
   const [allProjects, setAllProjects] = useState([])
-  const [discoverAllPosts, setDiscoverAllPosts] = useState([])
   const [showImageModal, setShowImageModal] = useState(null)
   const [imgUrl, setImgUrl] = useState('')
   const [imgPreview, setImgPreview] = useState('')
@@ -743,17 +862,39 @@ export default function StudentDashboard() {
   async function doUpload(e) {
     e.preventDefault()
     if (!uploadForm.title.trim()) { setUploadFb('⚠ Title is required.'); return }
-    setUploadFb('Uploading...')
+    setUploadFb('Generating preview...')
+    setUploadGenerating(true)
     try {
-      const payload = {
-        title: uploadForm.title, description: uploadForm.description,
-        category: uploadForm.category, status: uploadForm.status,
-        privacy: uploadForm.privacy, image_url: uploadForm.image_url || uploadForm.canvaUrl || '',
-        githubUrl: uploadForm.githubUrl, deployUrl: uploadForm.deployUrl,
-        figmaUrl: uploadForm.figmaUrl, adobeUrl: uploadForm.adobeUrl,
-        completion_date: uploadForm.completion_date, skills: uploadForm.skills,
+      let thumbnailFile = null
+      let thumbnailDataUrl = null
+
+      if (uploadForm.imageFile) {
+        thumbnailDataUrl = await generateThumbnailFromFile(uploadForm.imageFile, uploadForm.fileType)
+        if (thumbnailDataUrl) {
+          const blob = await (await fetch(thumbnailDataUrl)).blob()
+          thumbnailFile = new File([blob], `thumbnail_${Date.now()}.jpg`, { type: 'image/jpeg' })
+        }
       }
-      await addProject(payload, uploadForm.imageFile)
+
+      const payload = {
+        title: uploadForm.title,
+        description: uploadForm.description,
+        category: uploadForm.category,
+        status: uploadForm.status,
+        privacy: uploadForm.privacy,
+        image_url: thumbnailDataUrl || uploadForm.canvaUrl || '',
+        githubUrl: uploadForm.githubUrl,
+        deployUrl: uploadForm.deployUrl,
+        figmaUrl: uploadForm.figmaUrl,
+        adobeUrl: uploadForm.adobeUrl,
+        completion_date: uploadForm.completion_date,
+        skills: uploadForm.skills,
+        file_type: uploadForm.fileType,
+        original_filename: uploadForm.imageFile?.name || '',
+      }
+
+      setUploadFb('Uploading...')
+      await addProject(payload, thumbnailFile || uploadForm.imageFile)
       setUploadForm(BLANK_UPLOAD)
       setUploadFb('')
       const projs = await getProjects(true); setAllProjects(projs)
@@ -763,6 +904,8 @@ export default function StudentDashboard() {
     } catch (err) {
       console.error('Upload error:', err)
       setUploadFb('⚠ ' + (err.message || 'Upload failed. Check console.'))
+    } finally {
+      setUploadGenerating(false)
     }
   }
 
@@ -964,9 +1107,14 @@ export default function StudentDashboard() {
   ]
 
   const faqData = [
-    { q: 'How do I upload a project?', a: 'Go to Upload Project, fill details, and submit.' },
-    { q: 'Can I change my portfolio design?', a: 'Yes, use the Portfolio Editor.' },
-    { q: 'Is my data secure?', a: 'We use encryption and secure servers.' },
+    { q: 'How do I upload a project?', a: 'Go to Upload Project in the sidebar, choose your file type, fill in the project details, and click Upload. The system will automatically generate a thumbnail for you.' },
+    { q: 'What file types can I upload?', a: 'You can upload photos, documents (PDF, DOCX), PowerPoint presentations, Canva links, videos, GIFs, code files, and artwork. Each type gets a styled preview automatically.' },
+    { q: 'Can I change my portfolio design?', a: 'Yes! Navigate to Portfolio Editor and click "Edit Portfolio" to open the built-in designer. You can also apply admin-created templates from the Templates section.' },
+    { q: 'How do I make a project private?', a: 'When uploading or editing a project, set the Privacy field to "Private". Only you will be able to see it. "Unlisted" makes it visible only with a direct link.' },
+    { q: 'Can other students see my work?', a: 'Public projects appear in the Discover section, visible to all logged-in users. You control visibility per project.' },
+    { q: 'How does the analytics page work?', a: 'Analytics tracks your portfolio views over time. The graphs update daily and show trends across the last 7–30 days.' },
+    { q: 'Is my data secure?', a: 'Yes. All data is stored securely on our servers. Passwords are hashed and personal information is encrypted. We do not share your data with third parties.' },
+    { q: 'How do I share my portfolio?', a: 'Go to Share Link in the sidebar. Copy your unique portfolio URL and share it anywhere — social media, email, or your resume.' },
   ]
   const filteredFaq = faqData.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()))
 
@@ -996,7 +1144,7 @@ export default function StudentDashboard() {
           }
         })
         const thumbnail = canvas.toDataURL('image/jpeg', 0.9)
-        const payload = { title: `Design Project ${new Date().toLocaleDateString()}`, description: 'Created with the built-in designer', category: 'Design', status: 'Completed', privacy: 'public', image_url: thumbnail, skills: [], completion_date: new Date().toISOString().split('T')[0] }
+        const payload = { title: `Design Project ${new Date().toLocaleDateString()}`, description: 'Created with the built-in designer', category: 'Design', status: 'Completed', privacy: 'public', image_url: thumbnail, skills: [], completion_date: new Date().toISOString().split('T')[0], file_type: 'image' }
         try {
           const blob = await (await fetch(thumbnail)).blob()
           const file = new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' })
@@ -1139,7 +1287,7 @@ export default function StudentDashboard() {
             </div>
           )}
 
-          {section === 'discover' && <DiscoverGrid onViewPost={setDiscoverPost} onViewProfile={setDiscoverProfile} />}
+          {section === 'discover' && <DiscoverGrid onViewPost={(post, list) => { setDiscoverPost(post); setDiscoverAllPosts(list || discoverAllPosts) }} onViewProfile={setDiscoverProfile} />}
 
           {section === 'projects' && (
             <div className="sd-section">
@@ -1353,7 +1501,8 @@ export default function StudentDashboard() {
                     </select>
                   </div>
                   <hr className="sd-divider"/>
-                  <h4 style={{fontFamily:'var(--font-display)',fontSize:'.92rem',color:'var(--accent-light)',marginBottom:12}}>File Type</h4>
+                  <h4 style={{fontFamily:'var(--font-display)',fontSize:'.92rem',color:'var(--accent-light)',marginBottom:8}}>File Type</h4>
+                  <p style={{fontSize:'.78rem',color:'var(--text-dim)',marginBottom:12}}>A preview thumbnail will be auto-generated from your upload.</p>
                   <div className="upload-type-grid">
                     {UPLOAD_TYPES.map(t => (
                       <button type="button" key={t.key} className={`upload-type-btn${uploadForm.fileType===t.key?' active':''}`} onClick={()=>setUploadForm(f=>({...f,fileType:t.key,imageFile:null}))}>
@@ -1362,23 +1511,26 @@ export default function StudentDashboard() {
                     ))}
                   </div>
                   <div className="field-group" style={{marginTop:14}}>
-                    <label>Project Image / Thumbnail URL</label>
-                    <input value={uploadForm.image_url} onChange={e=>setUploadForm(f=>({...f,image_url:e.target.value}))} placeholder="https://..."/>
+                    {uploadForm.fileType === 'canva' ? (
+                      <>
+                        <label>Canva Share Link</label>
+                        <input value={uploadForm.canvaUrl||''} onChange={e=>setUploadForm(f=>({...f,canvaUrl:e.target.value}))} placeholder="https://www.canva.com/..."/>
+                      </>
+                    ) : selectedUploadType.accept && (
+                      <>
+                        <label>Upload {selectedUploadType.label}</label>
+                        <label className="sd-file-upload-btn">
+                          <i className={selectedUploadType.icon}/> {uploadForm.imageFile?uploadForm.imageFile.name:`Choose ${selectedUploadType.label}`}
+                          <input type="file" accept={selectedUploadType.accept} style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(!f)return;setUploadForm(uf=>({...uf,imageFile:f}))}}/>
+                        </label>
+                        {uploadForm.imageFile && (
+                          <div style={{marginTop:8,padding:'8px 12px',background:'rgba(37,99,235,.08)',borderRadius:8,fontSize:'.78rem',color:'var(--accent-light)',display:'flex',alignItems:'center',gap:6}}>
+                            <i className="fa-solid fa-circle-check"/> {uploadForm.imageFile.name} — thumbnail will be auto-generated
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
-                  {uploadForm.fileType === 'canva' ? (
-                    <div className="field-group">
-                      <label>Canva Share Link</label>
-                      <input value={uploadForm.canvaUrl||''} onChange={e=>setUploadForm(f=>({...f,canvaUrl:e.target.value}))} placeholder="https://www.canva.com/..."/>
-                    </div>
-                  ) : selectedUploadType.accept && (
-                    <div className="field-group">
-                      <label>Upload {selectedUploadType.label}</label>
-                      <label className="sd-file-upload-btn">
-                        <i className={selectedUploadType.icon}/> {uploadForm.imageFile?uploadForm.imageFile.name:`Choose ${selectedUploadType.label}`}
-                        <input type="file" accept={selectedUploadType.accept} style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(!f)return;setUploadForm(uf=>({...uf,imageFile:f}))}}/>
-                      </label>
-                    </div>
-                  )}
                   <hr className="sd-divider"/>
                   <h4 style={{fontFamily:'var(--font-display)',fontSize:'.92rem',color:'var(--accent-light)',marginBottom:12}}>Links</h4>
                   <div className="field-row">
@@ -1403,8 +1555,10 @@ export default function StudentDashboard() {
                     </div>
                   </div>
                   <div className="field-group" style={{marginTop:14}}><label>Completion Date</label><input type="date" value={uploadForm.completion_date} onChange={e=>setUploadForm(f=>({...f,completion_date:e.target.value}))}/></div>
-                  <button type="submit" className="btn-primary"><i className="fa-solid fa-cloud-arrow-up"/> Upload Project</button>
-                  {uploadFb&&<div className="save-feedback" style={{color:'var(--red)'}}>{uploadFb}</div>}
+                  <button type="submit" className="btn-primary" disabled={uploadGenerating}>
+                    {uploadGenerating ? <><i className="fa-solid fa-spinner fa-spin"/> Generating preview...</> : <><i className="fa-solid fa-cloud-arrow-up"/> Upload Project</>}
+                  </button>
+                  {uploadFb&&<div className="save-feedback" style={{color:uploadFb.startsWith('⚠')?'var(--red)':'var(--accent-light)'}}>{uploadFb}</div>}
                 </form>
                 <div className="upload-create-panel">
                   <div className="upload-create-card">
@@ -1422,19 +1576,37 @@ export default function StudentDashboard() {
 
           {section === 'public-view' && (
             <div className="sd-section">
-              <div className="sd-section-header"><div><h2 className="sd-section-title">Public View</h2></div></div>
+              <div className="sd-section-header"><div><h2 className="sd-section-title">Public View</h2><p className="sd-section-sub">This is how others see your portfolio</p></div></div>
               <div className="sd-public-view">
                 <div className="sd-pv-banner">
                   <div className="sd-pv-profile">{avatarUrl?<img src={avatarUrl} alt="avatar" onError={e=>e.target.style.display='none'} />:<i className="fa-solid fa-user"/>}</div>
-                  <div><h3>{user.name||'Your Name'}</h3><p>{user.program||'Portfolio'}</p><div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,color:'rgba(255,255,255,.7)',fontSize:'.82rem'}}><i className="fa-regular fa-eye"/> {stats.views} portfolio views</div></div>
+                  <div>
+                    <h3>{user.name||'Your Name'}</h3>
+                    <p>{user.program||'Portfolio'}</p>
+                    <div style={{display:'flex',alignItems:'center',gap:16,marginTop:8,color:'rgba(255,255,255,.75)',fontSize:'.82rem',flexWrap:'wrap'}}>
+                      <span><i className="fa-regular fa-eye"/> {stats.views} total views</span>
+                      <span><i className="fa-solid fa-folder"/> {activeProjects.filter(p=>p.privacy!=='private').length} public projects</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="sd-pv-projects">
                   {activeProjects.filter(p=>p.privacy!=='private').length===0 ? <div className="empty-state"><p>No public projects yet.</p></div> : (
                     <div className="sd-projects-grid">
                       {activeProjects.filter(p=>p.privacy!=='private').map((p,i)=>(
                         <div className="sd-project-card" key={p.id||i} onClick={()=>incrementProjectViews(p.id)} style={{cursor:'pointer'}}>
-                          <div className="sd-project-thumb"><ProjectThumb p={p} /></div>
-                          <div className="sd-project-info"><div className="sd-project-title">{p.title}</div><div className="sd-project-cat">{p.category}</div></div>
+                          <div className="sd-project-thumb">
+                            <ProjectThumb p={p} />
+                            <div className="sd-pv-views-badge">
+                              <i className="fa-solid fa-eye"/> {p.views || 0}
+                            </div>
+                          </div>
+                          <div className="sd-project-info">
+                            <div className="sd-project-title">{p.title}</div>
+                            <div className="sd-project-cat">{p.category}</div>
+                            <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap'}}>
+                              {p.skills&&p.skills.slice(0,2).map(s=><span key={s} className="sd-skill-pill">{s}</span>)}
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1446,18 +1618,62 @@ export default function StudentDashboard() {
 
           {section === 'analytics' && (
             <div className="sd-section">
-              <div className="sd-section-header"><div><h2 className="sd-section-title">Analytics</h2><p className="sd-section-sub">Track your portfolio performance</p></div></div>
-              <div className="sd-stats-grid" style={{marginBottom:20}}>
-                {[{icon:'eye',val:stats.views,label:'Total Views'},{icon:'folder',val:stats.projects,label:'Projects'},{icon:'heart',val:0,label:'Total Likes'},{icon:'comment',val:0,label:'Comments'}].map(s=>(
-                  <div className="sd-stat-card" key={s.label}><div className="sd-stat-icon"><i className={`fa-solid fa-${s.icon}`}/></div><div className="sd-stat-val">{s.val}</div><div className="sd-stat-name">{s.label}</div></div>
+              <div className="sd-section-header"><div><h2 className="sd-section-title">Analytics</h2><p className="sd-section-sub">Track your portfolio performance over time</p></div></div>
+
+              <div className="sd-stats-grid" style={{marginBottom:24}}>
+                {[
+                  {icon:'eye',val:stats.views,label:'Total Views',color:'#3b82f6'},
+                  {icon:'folder',val:stats.projects,label:'Projects',color:'#10b981'},
+                  {icon:'heart',val:stats.total_likes||0,label:'Total Likes',color:'#f87171'},
+                  {icon:'comment',val:stats.total_comments||0,label:'Comments',color:'#a855f7'},
+                ].map(s=>(
+                  <div className="sd-stat-card" key={s.label} style={{borderTop:`3px solid ${s.color}`}}>
+                    <div className="sd-stat-icon" style={{color:s.color}}><i className={`fa-solid fa-${s.icon}`}/></div>
+                    <div className="sd-stat-val">{s.val}</div>
+                    <div className="sd-stat-name">{s.label}</div>
+                  </div>
                 ))}
               </div>
-              {stats.views_by_day && stats.views_by_day.length > 0 ? (
-                <ViewsChart data={stats.views_by_day} />
-              ) : (
-                <div className="sd-card" style={{textAlign:'center',padding:'40px',marginBottom:20}}>
+
+              <div className="analytics-graphs-grid">
+                <LineGraph
+                  data={stats.views_by_day || []}
+                  color="#3b82f6"
+                  label="Portfolio Views"
+                  icon="fa-eye"
+                  total={stats.views || 0}
+                  sub="Last 7 days"
+                />
+                <LineGraph
+                  data={stats.projects_by_day || []}
+                  color="#10b981"
+                  label="Projects Uploaded"
+                  icon="fa-folder"
+                  total={stats.projects || 0}
+                  sub="All time"
+                />
+                <LineGraph
+                  data={stats.likes_by_day || []}
+                  color="#f87171"
+                  label="Likes Received"
+                  icon="fa-heart"
+                  total={stats.total_likes || 0}
+                  sub="Last 7 days"
+                />
+                <LineGraph
+                  data={stats.comments_by_day || []}
+                  color="#a855f7"
+                  label="Comments"
+                  icon="fa-comment"
+                  total={stats.total_comments || 0}
+                  sub="Last 7 days"
+                />
+              </div>
+
+              {(!stats.views_by_day || stats.views_by_day.length === 0) && (
+                <div className="sd-card" style={{textAlign:'center',padding:'40px',marginTop:16}}>
                   <i className="fa-solid fa-chart-line" style={{fontSize:'2.5rem',opacity:.3,marginBottom:12,display:'block'}}/>
-                  <p style={{color:'var(--text-muted)'}}>No view data yet. Share your portfolio to start tracking!</p>
+                  <p style={{color:'var(--text-muted)'}}>No data yet. Share your portfolio to start tracking!</p>
                 </div>
               )}
             </div>
@@ -1479,17 +1695,23 @@ export default function StudentDashboard() {
               <div className="sd-section-header"><div><h2 className="sd-section-title">Account Settings</h2></div></div>
               <div className="sd-settings-container">
                 <div className="sd-settings-sidebar">
-                  <button className={`sd-settings-tab ${settingsOpenSection==='account'?'active':''}`} onClick={()=>setSettingsOpenSection('account')}><i className="fa-regular fa-user"/> Account Information</button>
-                  <button className={`sd-settings-tab ${settingsOpenSection==='terms'?'active':''}`} onClick={()=>setSettingsOpenSection('terms')}><i className="fa-regular fa-file-lines"/> Terms of Service</button>
-                  <button className={`sd-settings-tab ${settingsOpenSection==='privacy'?'active':''}`} onClick={()=>setSettingsOpenSection('privacy')}><i className="fa-regular fa-shield"/> Privacy Policy</button>
-                  <button className={`sd-settings-tab ${settingsOpenSection==='about'?'active':''}`} onClick={()=>setSettingsOpenSection('about')}><i className="fa-regular fa-circle-info"/> About Website</button>
-                  <button className={`sd-settings-tab ${settingsOpenSection==='faq'?'active':''}`} onClick={()=>setSettingsOpenSection('faq')}><i className="fa-regular fa-circle-question"/> FAQ</button>
-                  <button className={`sd-settings-tab ${settingsOpenSection==='review'?'active':''}`} onClick={()=>setSettingsOpenSection('review')}><i className="fa-regular fa-star"/> Leave a Review</button>
+                  {[
+                    ['account','fa-regular fa-user','Account Information'],
+                    ['terms','fa-regular fa-file-lines','Terms of Service'],
+                    ['privacy','fa-regular fa-shield','Privacy Policy'],
+                    ['about','fa-regular fa-circle-info','About SDMS'],
+                    ['faq','fa-regular fa-circle-question','FAQ'],
+                    ['review','fa-regular fa-star','Leave a Review'],
+                  ].map(([key, icon, label]) => (
+                    <button key={key} className={`sd-settings-tab ${settingsOpenSection===key?'active':''}`} onClick={()=>setSettingsOpenSection(key)}>
+                      <i className={icon}/> {label}
+                    </button>
+                  ))}
                 </div>
                 <div className="sd-settings-content">
                   {settingsOpenSection === 'account' && (
                     <form className="sd-form-card" onSubmit={saveSettings}>
-                      <h3>Account Information</h3>
+                      <h3 style={{fontFamily:'var(--font-display)',marginBottom:20}}>Account Information</h3>
                       <div className="field-row">
                         <div className="field-group"><label>First Name</label><input placeholder="First name" /></div>
                         <div className="field-group"><label>Middle Name</label><input placeholder="Middle name" /></div>
@@ -1507,61 +1729,172 @@ export default function StudentDashboard() {
                       {settingsFb&&<div className="save-feedback">{settingsFb}</div>}
                     </form>
                   )}
+
                   {settingsOpenSection === 'terms' && (
-                    <div className="sd-card">
-                      <h3>Terms of Service</h3>
-                      <div style={{maxHeight:400,overflowY:'auto',paddingRight:10}}>
-                        <p>Welcome to Student Digital Portfolio Management System. By using our service, you agree to these terms...</p>
-                        <h4>1. Acceptance</h4><p>By accessing this website, you accept these terms and conditions.</p>
-                        <h4>2. User Accounts</h4><p>You are responsible for maintaining the security of your account.</p>
-                        <h4>3. Content</h4><p>You retain ownership of your content but grant us a license to display it.</p>
-                        <h4>4. Prohibited Conduct</h4><p>No harassment, illegal activities, or infringement.</p>
-                        <h4>5. Termination</h4><p>We may suspend accounts that violate these terms.</p>
+                    <div className="sd-legal-doc">
+                      <div className="sd-legal-header">
+                        <i className="fa-regular fa-file-lines sd-legal-icon"/>
+                        <div>
+                          <h2>Terms of Service</h2>
+                          <p>Last updated: May 2026</p>
+                        </div>
+                      </div>
+                      <div className="sd-legal-body">
+                        <p>Welcome to the <strong>Student Digital Portfolio Management System (SDMS)</strong>. By accessing or using this platform, you agree to be bound by these Terms of Service. Please read them carefully before using the service.</p>
+
+                        <h4>1. Acceptance of Terms</h4>
+                        <p>By creating an account or using any features of SDMS, you confirm that you have read, understood, and agreed to these Terms. If you do not agree, please discontinue use of the platform immediately.</p>
+
+                        <h4>2. Eligibility</h4>
+                        <p>SDMS is intended for enrolled students and authorized faculty/administrators of the institution. Accounts are issued on a per-user basis and are non-transferable. You must be at least 13 years of age or have appropriate parental consent to use this platform.</p>
+
+                        <h4>3. User Accounts</h4>
+                        <p>You are responsible for maintaining the confidentiality of your login credentials. You agree to notify the administrator immediately of any unauthorized access to your account. The institution reserves the right to suspend or terminate accounts that violate these Terms.</p>
+
+                        <h4>4. Acceptable Use</h4>
+                        <p>You agree not to use SDMS to: upload content that is offensive, defamatory, or infringing on third-party rights; attempt to gain unauthorized access to other users' accounts; distribute malware, spam, or harmful code; impersonate another person or entity; or violate any applicable local, national, or international law.</p>
+
+                        <h4>5. Intellectual Property</h4>
+                        <p>You retain full ownership of the academic and creative works you upload. By uploading content, you grant SDMS a limited, non-exclusive license to display your work within the platform for portfolio and educational purposes. You may remove your content at any time.</p>
+
+                        <h4>6. Privacy</h4>
+                        <p>Your use of SDMS is also governed by our Privacy Policy. We collect only the information necessary to operate the platform and do not sell your data to third parties.</p>
+
+                        <h4>7. Disclaimer of Warranties</h4>
+                        <p>SDMS is provided "as is" without warranties of any kind. We do not guarantee uninterrupted access or error-free operation. We are not liable for any loss of data or interruption of service.</p>
+
+                        <h4>8. Modifications</h4>
+                        <p>We reserve the right to update these Terms at any time. Continued use of the platform after changes are posted constitutes acceptance of the updated Terms.</p>
+
+                        <h4>9. Contact</h4>
+                        <p>For questions regarding these Terms, please contact your system administrator or the SDMS support team.</p>
                       </div>
                     </div>
                   )}
+
                   {settingsOpenSection === 'privacy' && (
-                    <div className="sd-card">
-                      <h3>Privacy Policy</h3>
-                      <p>Your privacy is important to us. We only collect data necessary for service operation.</p>
-                      <p>We do not sell your personal information. All data is encrypted.</p>
+                    <div className="sd-legal-doc">
+                      <div className="sd-legal-header">
+                        <i className="fa-regular fa-shield sd-legal-icon"/>
+                        <div>
+                          <h2>Privacy Policy</h2>
+                          <p>Last updated: May 2026</p>
+                        </div>
+                      </div>
+                      <div className="sd-legal-body">
+                        <p>This Privacy Policy explains how <strong>SDMS</strong> collects, uses, stores, and protects your personal information when you use our platform.</p>
+
+                        <h4>1. Information We Collect</h4>
+                        <p>We collect information you provide directly, including your name, email address, date of birth, academic program, and any content you upload (projects, portfolio designs, resume data). We also collect usage data such as login times, page visits, and interaction logs to improve the platform.</p>
+
+                        <h4>2. How We Use Your Information</h4>
+                        <p>Your data is used to: operate and personalize your portfolio experience; display your public projects to other users when you opt in; send you administrative notifications and announcements; monitor platform health and security; and generate anonymized usage statistics for institutional reporting.</p>
+
+                        <h4>3. Data Sharing</h4>
+                        <p>We do not sell, rent, or trade your personal information to any third party. Your data may be shared with system administrators of the institution for academic oversight purposes only. We do not integrate third-party advertising networks.</p>
+
+                        <h4>4. Data Storage and Security</h4>
+                        <p>All data is stored on secured servers. Passwords are hashed using industry-standard algorithms and are never stored in plaintext. Media files are stored with access controls. We implement regular security audits and vulnerability checks.</p>
+
+                        <h4>5. Your Rights</h4>
+                        <p>You have the right to: access the personal data we hold about you; request correction of inaccurate information; request deletion of your account and associated data; and withdraw consent for optional data processing at any time.</p>
+
+                        <h4>6. Cookies</h4>
+                        <p>SDMS uses session cookies necessary for authentication and platform functionality. We do not use tracking or advertising cookies.</p>
+
+                        <h4>7. Data Retention</h4>
+                        <p>Your data is retained for the duration of your enrollment or until account deletion is requested. Deleted accounts are purged from our systems within 30 days, except where retention is required by institutional policy or law.</p>
+
+                        <h4>8. Contact</h4>
+                        <p>For privacy-related concerns or data requests, please contact your system administrator.</p>
+                      </div>
                     </div>
                   )}
+
                   {settingsOpenSection === 'about' && (
-                    <div className="sd-card">
-                      <h3>About SDMS</h3>
-                      <p>Student Digital Portfolio Management System is a platform for students to showcase their academic and creative works.</p>
-                      <p>Version 1.0.0 | Built with React & Django</p>
+                    <div className="sd-legal-doc">
+                      <div className="sd-legal-header">
+                        <i className="fa-regular fa-circle-info sd-legal-icon"/>
+                        <div>
+                          <h2>About SDMS</h2>
+                          <p>Student Digital Portfolio Management System</p>
+                        </div>
+                      </div>
+                      <div className="sd-legal-body">
+                        <p>The <strong>Student Digital Portfolio Management System (SDMS)</strong> is a web-based platform designed to help students document, showcase, and manage their academic and creative works throughout their academic journey.</p>
+
+                        <h4>Purpose</h4>
+                        <p>SDMS bridges the gap between academic output and professional presentation, enabling students to build a curated digital portfolio that reflects their skills, growth, and achievements — all in one place.</p>
+
+                        <h4>Key Features</h4>
+                        <p>Portfolio Designer with a built-in Figma-like canvas editor. Multi-format project uploads including images, documents, presentations, code, and video. A Discover section to explore and engage with other students' work. Analytics dashboard for tracking portfolio performance. Resume builder with multiple professional templates. Admin-created portfolio templates. Role-based access for Students and Administrators.</p>
+
+                        <h4>Technology</h4>
+                        <p>SDMS is built with React and Vite on the frontend, powered by a Django REST API backend. File storage, authentication, and real-time notifications are handled server-side.</p>
+
+                        <h4>Version</h4>
+                        <p>Version 1.0.0 — Academic Year 2025–2026. Developed as a capstone project for the BSIT program.</p>
+
+                        <h4>Support</h4>
+                        <p>For technical issues or feedback, please reach out to your class administrator or submit a review through the Leave a Review section.</p>
+                      </div>
                     </div>
                   )}
+
                   {settingsOpenSection === 'faq' && (
                     <div className="sd-card">
-                      <h3>Frequently Asked Questions</h3>
-                      <input placeholder="Search FAQ..." value={faqSearch} onChange={e=>setFaqSearch(e.target.value)} className="sd-search-input" style={{marginBottom:16}}/>
-                      {filteredFaq.map((f,i)=>(
-                        <details key={i} style={{marginBottom:12,borderBottom:'1px solid var(--card-border)',paddingBottom:8}}>
-                          <summary style={{cursor:'pointer',fontWeight:600}}>{f.q}</summary>
-                          <p style={{marginTop:8,color:'var(--text-muted)'}}>{f.a}</p>
-                        </details>
-                      ))}
-                      <div style={{marginTop:16}}>
-                        <h4>Ask a Question</h4>
-                        <textarea placeholder="Type your question..." rows={2} style={{width:'100%',marginBottom:8}}/>
-                        <button className="btn-primary">Submit</button>
+                      <h3 style={{fontFamily:'var(--font-display)',marginBottom:16}}>Frequently Asked Questions</h3>
+                      <div style={{position:'relative',marginBottom:20}}>
+                        <i className="fa-solid fa-magnifying-glass" style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text-dim)',fontSize:'.82rem'}}/>
+                        <input placeholder="Search questions..." value={faqSearch} onChange={e=>setFaqSearch(e.target.value)} style={{paddingLeft:34,width:'100%'}}/>
+                      </div>
+                      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                        {filteredFaq.map((f,i)=>(
+                          <details key={i} className="sd-faq-item">
+                            <summary className="sd-faq-question">
+                              <i className="fa-solid fa-chevron-right sd-faq-chevron"/>
+                              {f.q}
+                            </summary>
+                            <p className="sd-faq-answer">{f.a}</p>
+                          </details>
+                        ))}
+                        {filteredFaq.length === 0 && <div style={{textAlign:'center',color:'var(--text-dim)',padding:'24px 0',fontSize:'.86rem'}}>No matching questions found.</div>}
+                      </div>
+                      <div style={{marginTop:24,paddingTop:20,borderTop:'1px solid var(--card-border)'}}>
+                        <h4 style={{fontFamily:'var(--font-display)',marginBottom:12,fontSize:'.95rem'}}>Still have a question?</h4>
+                        <textarea placeholder="Type your question or feedback here..." rows={3} style={{width:'100%',marginBottom:10}}/>
+                        <button className="btn-primary"><i className="fa-solid fa-paper-plane"/> Submit</button>
                       </div>
                     </div>
                   )}
+
                   {settingsOpenSection === 'review' && (
                     <div className="sd-card">
-                      <h3>Rate Your Experience</h3>
-                      <div style={{display:'flex',gap:5,marginBottom:12}}>
-                        {[1,2,3,4,5].map(s=>(
-                          <i key={s} className={`fa-${s<=reviewRating?'solid':'regular'} fa-star`} style={{color:'#fbbf24',fontSize:'1.5rem',cursor:'pointer'}} onClick={()=>setReviewRating(s)}/>
-                        ))}
+                      <h3 style={{fontFamily:'var(--font-display)',marginBottom:6}}>Rate Your Experience</h3>
+                      <p style={{color:'var(--text-muted)',fontSize:'.84rem',marginBottom:20}}>Your feedback helps us improve SDMS for all students.</p>
+                      <div style={{marginBottom:16}}>
+                        <label style={{display:'block',marginBottom:8}}>Overall Rating</label>
+                        <div style={{display:'flex',gap:8}}>
+                          {[1,2,3,4,5].map(s=>(
+                            <i key={s} className={`fa-${s<=reviewRating?'solid':'regular'} fa-star`} style={{color:'#fbbf24',fontSize:'1.8rem',cursor:'pointer',transition:'transform .1s'}} onClick={()=>setReviewRating(s)} onMouseEnter={e=>e.currentTarget.style.transform='scale(1.2)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}/>
+                          ))}
+                        </div>
+                        {reviewRating > 0 && <p style={{marginTop:8,fontSize:'.8rem',color:'var(--accent-light)'}}>
+                          {['','😞 Poor','😕 Fair','😊 Good','😄 Very Good','🤩 Excellent!'][reviewRating]}
+                        </p>}
                       </div>
-                      <textarea placeholder="Your comments..." rows={3} value={reviewComment} onChange={e=>setReviewComment(e.target.value)} style={{width:'100%',marginBottom:12}}/>
-                      <button className="btn-primary" onClick={()=>{setShowReviewThanks(true);setReviewRating(0);setReviewComment('');setTimeout(()=>setShowReviewThanks(false),3000)}}>Submit Review</button>
-                      {showReviewThanks && <div style={{marginTop:10,color:'var(--accent-light)'}}>Thank you! We appreciate your feedback. ❤️</div>}
+                      <div className="field-group">
+                        <label>Your Comments</label>
+                        <textarea placeholder="Tell us what you love, what could be better, or any suggestions..." rows={4} value={reviewComment} onChange={e=>setReviewComment(e.target.value)} style={{width:'100%'}}/>
+                      </div>
+                      <button className="btn-primary" onClick={()=>{if(!reviewRating)return;setShowReviewThanks(true);setReviewRating(0);setReviewComment('');setTimeout(()=>setShowReviewThanks(false),4000)}}>
+                        <i className="fa-solid fa-paper-plane"/> Submit Review
+                      </button>
+                      {showReviewThanks && (
+                        <div style={{marginTop:14,padding:'12px 16px',background:'rgba(74,222,128,.08)',border:'1px solid rgba(74,222,128,.2)',borderRadius:10,color:'var(--green)',fontSize:'.86rem',display:'flex',alignItems:'center',gap:8}}>
+                          <i className="fa-solid fa-circle-check"/> Thank you! Your feedback has been submitted. We appreciate it ❤️
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1571,7 +1904,14 @@ export default function StudentDashboard() {
         </main>
       </div>
 
-      {discoverPost && <DiscoverPostModal post={discoverPost} onClose={()=>setDiscoverPost(null)} onViewProfile={p=>{setDiscoverPost(null);setDiscoverProfile(p)}} allPosts={discoverAllPosts} />}
+      {discoverPost && (
+        <DiscoverPostModal
+          post={discoverPost}
+          onClose={()=>setDiscoverPost(null)}
+          onViewProfile={p=>{setDiscoverPost(null);setDiscoverProfile(p)}}
+          allPosts={discoverAllPosts}
+        />
+      )}
       {discoverProfile && <ProfileModal user={discoverProfile} onClose={()=>setDiscoverProfile(null)} />}
 
       {viewAlert && (
@@ -1669,7 +2009,6 @@ export default function StudentDashboard() {
                   <div className="field-group"><label>Status</label><select value={editProjectForm.status||'Completed'} onChange={e=>setEditProjectForm(f=>({...f,status:e.target.value}))}><option>Completed</option><option>In Progress</option><option>Concept</option></select></div>
                 </div>
                 <div className="field-group"><label>Privacy</label><select value={editProjectForm.privacy||'public'} onChange={e=>setEditProjectForm(f=>({...f,privacy:e.target.value}))}><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></div>
-                <div className="field-group"><label>Image URL</label><input value={editProjectForm.image_url||''} onChange={e=>setEditProjectForm(f=>({...f,image_url:e.target.value}))} placeholder="https://..."/></div>
                 <div className="field-row">
                   <div className="field-group"><label>GitHub URL</label><input value={editProjectForm.github_url||''} onChange={e=>setEditProjectForm(f=>({...f,github_url:e.target.value}))}/></div>
                   <div className="field-group"><label>Live URL</label><input value={editProjectForm.deploy_url||''} onChange={e=>setEditProjectForm(f=>({...f,deploy_url:e.target.value}))}/></div>
