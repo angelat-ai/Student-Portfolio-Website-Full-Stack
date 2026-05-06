@@ -445,30 +445,34 @@ export default function FigmaEditor({ initialData, onSave, onClose, canvasLabel 
       return (
         <div
           key={data.id}
-          style={{
-            ...baseStyle,
-            ...selectionRing,
-            fontSize: (data.fontSize || 20) + 'px',
-            color: data.color || '#000',
-            fontWeight: data.fontWeight || '400',
-            fontFamily: data.fontFamily || 'Arial',
-            minWidth: '40px',
-            padding: '2px 4px',
-            whiteSpace: 'pre-wrap',
-            cursor: isCursorTool ? 'move' : 'default',
-            lineHeight: 1.3,
-            textDecoration: data.underline ? 'underline' : 'none',
-            fontStyle: data.italic ? 'italic' : 'normal',
-          }}
-          contentEditable={isCursorTool}
-          suppressContentEditableWarning
-          spellCheck={false}
+          style={{ ...baseStyle, ...selectionRing, minWidth: '40px' }}
           onMouseDown={onElDown}
+          onClick={onElClick}
           onContextMenu={onCtx}
-          onBlur={e => { updateProp('content', e.target.innerText) }}
-          onClick={e => { if (!isCursorTool) return; e.stopPropagation(); setSelected(data) }}
         >
-          {data.content || 'Text'}
+          <div
+            style={{
+              fontSize: (data.fontSize || 20) + 'px',
+              color: data.color || '#000',
+              fontWeight: data.fontWeight || '400',
+              fontFamily: data.fontFamily || 'Arial',
+              padding: '2px 4px',
+              whiteSpace: 'pre-wrap',
+              cursor: isCursorTool ? 'text' : 'default',
+              lineHeight: 1.3,
+              textDecoration: data.underline ? 'underline' : 'none',
+              fontStyle: data.italic ? 'italic' : 'normal',
+              outline: 'none',
+              width: '100%',
+              height: '100%'
+            }}
+            contentEditable={isCursorTool}
+            suppressContentEditableWarning
+            spellCheck={false}
+            onBlur={e => { updateProp('content', e.target.innerText) }}
+          >
+            {data.content || 'Text'}
+          </div>
           {rotateHandle}
         </div>
       )

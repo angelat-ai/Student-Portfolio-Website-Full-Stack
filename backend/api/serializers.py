@@ -82,6 +82,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         model = Project
         fields = ['id','title','description','category','status','privacy',
                   'image_url','github_url','deploy_url','figma_url','adobe_url',
+                  'file_type','original_filename','file_attachment','file_url',
                   'completion_date','skills','views','deleted','deleted_at',
                   'created_at','updated_at','owner','owner_name','owner_email','owner_avatar',
                   'like_count','comment_count','liked_by_me','effective_image','comments']

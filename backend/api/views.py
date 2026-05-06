@@ -152,11 +152,17 @@ def projects(request):
         deploy_url=data.get('deployUrl', ''),
         figma_url=data.get('figmaUrl', ''),
         adobe_url=data.get('adobeUrl', ''),
+        file_type=data.get('file_type', ''),
+        original_filename=data.get('original_filename', ''),
+        file_url=data.get('file_url', ''),
         completion_date=data.get('completion_date') or None,
         skills=skills,
     )
     if 'image_file' in request.FILES:
         proj.image_file = request.FILES['image_file']
+    if 'file_attachment' in request.FILES:
+        proj.file_attachment = request.FILES['file_attachment']
+    if 'image_file' in request.FILES or 'file_attachment' in request.FILES:
         proj.save()
     return Response(ProjectSerializer(proj, context={'request': request}).data, status=201)
 
@@ -174,7 +180,7 @@ def project_detail(request, pk):
         for k, v in mapping.items():
             if k in data:
                 setattr(proj, v, data[k])
-        for f in ['title', 'description', 'category', 'status', 'privacy', 'image_url', 'github_url', 'deploy_url', 'figma_url', 'adobe_url', 'completion_date']:
+        for f in ['title', 'description', 'category', 'status', 'privacy', 'image_url', 'github_url', 'deploy_url', 'figma_url', 'adobe_url', 'file_type', 'original_filename', 'file_url', 'completion_date']:
             if f in data:
                 setattr(proj, f, data[f] or (None if f == 'completion_date' else ''))
         if 'skills' in data:
@@ -188,6 +194,8 @@ def project_detail(request, pk):
             proj.skills = skills
         if 'image_file' in request.FILES:
             proj.image_file = request.FILES['image_file']
+        if 'file_attachment' in request.FILES:
+            proj.file_attachment = request.FILES['file_attachment']
         proj.save()
         return Response(ProjectSerializer(proj, context={'request': request}).data)
     action = request.query_params.get('action', 'soft')

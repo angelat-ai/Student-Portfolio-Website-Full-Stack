@@ -212,8 +212,8 @@ export async function getProjects(includeDeleted = false) {
   return request(`/projects/${query}`)
 }
 
-export async function addProject(payload, imageFile) {
-  if (imageFile) {
+export async function addProject(payload, imageFile, originalFile) {
+  if (imageFile || originalFile) {
     const form = new FormData()
     Object.entries(payload).forEach(([key, value]) => {
       if (Array.isArray(value)) {
@@ -222,7 +222,8 @@ export async function addProject(payload, imageFile) {
         form.append(key, value ?? '')
       }
     })
-    form.append('image_file', imageFile)
+    if (imageFile) form.append('image_file', imageFile)
+    if (originalFile) form.append('file_attachment', originalFile)
     return request('/projects/', { method: 'POST', body: form })
   }
   return request('/projects/', {

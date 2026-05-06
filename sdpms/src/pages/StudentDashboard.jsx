@@ -470,7 +470,8 @@ function DiscoverPostModal({ post, onClose, onViewProfile, allPosts = [] }) {
   const [currentPost, setCurrentPost] = useState(post)
   const imgSrc = getImageSrc(currentPost)
   const ft = currentPost.file_type || currentPost.fileType || ''
-  const viewerUrl = currentPost.file_url ? getFileViewerUrl(currentPost.file_url) : null
+  const actualFileUrl = currentPost.file_attachment || currentPost.file_url
+  const viewerUrl = actualFileUrl ? getFileViewerUrl(actualFileUrl) : null
   const [showViewer, setShowViewer] = useState(false)
 
   const currentIndex = allPosts.findIndex(p => p.id === currentPost.id)
@@ -523,8 +524,8 @@ function DiscoverPostModal({ post, onClose, onViewProfile, allPosts = [] }) {
               <button className="doc-viewer-btn" onClick={()=>setShowViewer(v=>!v)}>
                 <i className={`fa-solid fa-${showViewer?'image':'eye'}`}/> {showViewer ? 'Show Thumbnail' : 'View Document'}
               </button>
-              {currentPost.file_url && (
-                <a href={currentPost.file_url} download target="_blank" rel="noreferrer" className="doc-viewer-btn">
+              {actualFileUrl && (
+                <a href={actualFileUrl} download target="_blank" rel="noreferrer" className="doc-viewer-btn">
                   <i className="fa-solid fa-download"/> Download
                 </a>
               )}
@@ -989,7 +990,7 @@ export default function StudentDashboard() {
       }
 
       setUploadFb('Uploading...')
-      await addProject(payload, thumbnailFile || uploadForm.imageFile)
+      await addProject(payload, thumbnailFile || uploadForm.imageFile, uploadForm.imageFile)
       setUploadForm(BLANK_UPLOAD)
       setLocalPreview(null)
       setUploadFb('')

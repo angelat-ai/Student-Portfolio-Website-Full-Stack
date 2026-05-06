@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'sdpms-secret-key-change-in-production-2026'
 
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['*', '.onrender.com', '.vercel.app']
 
