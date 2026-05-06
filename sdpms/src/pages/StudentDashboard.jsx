@@ -31,18 +31,27 @@ const UPLOAD_TYPES = [
 ]
 
 const FILE_TYPE_META = {
-  doc:  { icon: 'fa-regular fa-file-lines',      label: 'Document',   color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
-  ppt:  { icon: 'fa-regular fa-file-powerpoint', label: 'PowerPoint', color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
-  pdf:  { icon: 'fa-regular fa-file-pdf',        label: 'PDF',        color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-  video:{ icon: 'fa-solid fa-video',             label: 'Video',      color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
-  code: { icon: 'fa-solid fa-code',              label: 'Code',       color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-  art:  { icon: 'fa-solid fa-paintbrush',        label: 'Art',        color: '#ec4899', bg: 'rgba(236,72,153,0.12)' },
-  gif:  { icon: 'fa-regular fa-file-image',      label: 'GIF',        color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+  doc:  { icon: 'fa-regular fa-file-lines',      label: 'Document',   color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
+  ppt:  { icon: 'fa-regular fa-file-powerpoint', label: 'PowerPoint', color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
+  pdf:  { icon: 'fa-regular fa-file-pdf',        label: 'PDF',        color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+  video:{ icon: 'fa-solid fa-video',             label: 'Video',      color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)' },
+  code: { icon: 'fa-solid fa-code',              label: 'Code',       color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
+  art:  { icon: 'fa-solid fa-paintbrush',        label: 'Art',        color: '#ec4899', bg: 'rgba(236,72,153,0.15)' },
+  gif:  { icon: 'fa-regular fa-file-image',      label: 'GIF',        color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
 }
 
 const BLANK_UPLOAD = { title:'', description:'', category:'', status:'Completed', imageFile:null, fileType:'image', canvaUrl:'', skills:[], githubUrl:'', deployUrl:'', figmaUrl:'', adobeUrl:'', completion_date:'', privacy:'public' }
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+function dataUrlToFile(dataUrl, filename) {
+  const [header, data] = dataUrl.split(',')
+  const mime = header.match(/:(.*?);/)[1]
+  const binary = atob(data)
+  const arr = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i)
+  return new File([arr], filename, { type: mime })
+}
 
 function getImageSrc(p) {
   if (!p) return ''
@@ -65,12 +74,11 @@ function FileTypeBadge({ type, filename }) {
   return (
     <div style={{
       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-      width:'100%', height:'100%', gap:10,
-      background: meta.bg,
+      width:'100%', height:'100%', gap:10, background: meta.bg,
     }}>
-      <i className={meta.icon} style={{fontSize:'3rem', color:meta.color}} />
-      <span style={{fontSize:'.78rem', color:meta.color, fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em'}}>{meta.label}</span>
-      {filename && <span style={{fontSize:'.68rem', color:'var(--text-muted)', maxWidth:'80%', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'center'}}>{filename}</span>}
+      <i className={meta.icon} style={{fontSize:'2.8rem', color:meta.color}} />
+      <span style={{fontSize:'.75rem', color:meta.color, fontWeight:700, textTransform:'uppercase', letterSpacing:'.1em'}}>{meta.label}</span>
+      {filename && <span style={{fontSize:'.64rem', color:'var(--text-muted)', maxWidth:'80%', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'center'}}>{filename}</span>}
     </div>
   )
 }
@@ -79,13 +87,27 @@ function ProjectThumb({ p, style = {} }) {
   const [err, setErr] = useState(false)
   const src = getImageSrc(p)
   const ft = p?.file_type || p?.fileType || ''
+
+  useEffect(() => { setErr(false) }, [src])
+
   if (src && !err) {
-    return <img src={src} alt={p.title} onError={() => setErr(true)} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block', ...style }} />
+    return (
+      <img
+        src={src}
+        alt={p?.title || ''}
+        onError={() => setErr(true)}
+        style={{ width:'100%', height:'100%', objectFit:'cover', display:'block', ...style }}
+      />
+    )
   }
-  if (ft && ft !== 'image') {
+  if (ft && ft !== 'image' && ft !== 'art' && ft !== 'gif') {
     return <FileTypeBadge type={ft} filename={p?.original_filename || p?.title} />
   }
-  return <i className="fa-regular fa-image" style={{ fontSize: '2rem', color: 'var(--text-dim)', ...style }} />
+  return (
+    <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', background:'linear-gradient(135deg,#1a3a8f,#2563eb44)' }}>
+      <i className="fa-regular fa-image" style={{ fontSize: '2rem', color: 'rgba(255,255,255,0.2)', ...style }} />
+    </div>
+  )
 }
 
 async function generateThumbnailFromFile(file, fileType) {
@@ -104,31 +126,42 @@ async function generateThumbnailFromFile(file, fileType) {
     const canvas = document.createElement('canvas')
     canvas.width = 800; canvas.height = 560
     const ctx = canvas.getContext('2d')
+
     ctx.fillStyle = '#0d1f3a'
     ctx.fillRect(0, 0, 800, 560)
 
     const gradient = ctx.createLinearGradient(0, 0, 800, 560)
-    gradient.addColorStop(0, meta.bg.replace('0.12)', '0.25)'))
+    gradient.addColorStop(0, meta.bg.replace('0.15)', '0.3)'))
     gradient.addColorStop(1, 'rgba(0,0,0,0)')
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, 800, 560)
 
-    ctx.font = '64px Arial'
+    ctx.fillStyle = 'rgba(255,255,255,0.04)'
+    ctx.beginPath()
+    ctx.roundRect(200, 140, 400, 280, 20)
+    ctx.fill()
+    ctx.strokeStyle = meta.color + '44'
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    ctx.fillStyle = meta.bg.replace('0.15)', '0.4)')
+    ctx.beginPath()
+    ctx.roundRect(340, 170, 120, 120, 16)
+    ctx.fill()
+
+    ctx.font = 'bold 28px Arial'
+    ctx.fillStyle = meta.color
     ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillStyle = meta.color
-    ctx.fillText(meta.label === 'Document' ? '📄' : meta.label === 'PowerPoint' ? '📊' : meta.label === 'PDF' ? '📕' : '📁', 400, 220)
+    ctx.fillText(meta.label.toUpperCase(), 400, 340)
 
-    ctx.font = 'bold 32px Arial'
-    ctx.fillStyle = meta.color
-    ctx.fillText(meta.label.toUpperCase(), 400, 310)
+    if (file.name) {
+      ctx.font = '18px Arial'
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'
+      const displayName = file.name.length > 36 ? file.name.slice(0,36) + '…' : file.name
+      ctx.fillText(displayName, 400, 375)
+    }
 
-    ctx.font = '20px Arial'
-    ctx.fillStyle = 'rgba(255,255,255,0.5)'
-    const displayName = file.name ? (file.name.length > 40 ? file.name.slice(0,40) + '…' : file.name) : ''
-    ctx.fillText(displayName, 400, 360)
-
-    resolve(canvas.toDataURL('image/jpeg', 0.85))
+    resolve(canvas.toDataURL('image/jpeg', 0.92))
   })
 }
 
@@ -217,29 +250,37 @@ function CategoryDropdown({ value, onChange }) {
   )
 }
 
-function LineGraph({ data, color = '#2563eb', label = 'Views', icon = 'fa-eye', total = 0, sub = '' }) {
+function LineGraph({ data = [], color = '#2563eb', label = 'Views', icon = 'fa-eye', total = 0, sub = '' }) {
   const vals = (data || []).map(d => d.views || d.count || d.value || 0)
   const max = Math.max(...vals, 1)
-  const W = 300, H = 80, pad = 6
-  const pts = vals.map((v, i) => {
+  const W = 300, H = 90, pad = 8
+
+  const points = vals.map((v, i) => {
     const x = pad + (i / Math.max(vals.length - 1, 1)) * (W - pad * 2)
     const y = H - pad - ((v / max) * (H - pad * 2))
-    return `${x},${y}`
-  }).join(' ')
-  const area = vals.length > 1 ? `M${pad},${H} L${pts.split(' ').map((p,i)=>i===0?p.replace(',',` L`):p).join(' L')} L${W-pad},${H} Z` : ''
+    return [x, y]
+  })
+
+  const pts = points.map(p => p.join(',')).join(' ')
+  const areaPath = points.length > 1
+    ? `M${points[0][0]},${H} ${points.map(p=>`L${p[0]},${p[1]}`).join(' ')} L${points[points.length-1][0]},${H} Z`
+    : ''
+
   const last7 = vals.slice(-7)
   const prev7 = vals.slice(-14, -7)
   const lastSum = last7.reduce((a,b)=>a+b,0)
   const prevSum = prev7.reduce((a,b)=>a+b,0)
   const trend = prevSum === 0 ? null : Math.round(((lastSum - prevSum) / prevSum) * 100)
 
+  const hasData = vals.some(v => v > 0)
+
   return (
     <div className="analytics-graph-card">
       <div className="analytics-graph-header">
-        <div className="analytics-graph-icon" style={{background:`${color}22`,color}}>
+        <div className="analytics-graph-icon" style={{background:`${color}20`,color}}>
           <i className={`fa-solid ${icon}`}/>
         </div>
-        <div>
+        <div style={{flex:1}}>
           <div className="analytics-graph-label">{label}</div>
           {sub && <div className="analytics-graph-sub">{sub}</div>}
         </div>
@@ -251,26 +292,25 @@ function LineGraph({ data, color = '#2563eb', label = 'Views', icon = 'fa-eye', 
         )}
       </div>
       <div className="analytics-graph-total" style={{color}}>{total.toLocaleString()}</div>
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:'visible', marginTop:8}}>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:'visible', marginTop:6}}>
         <defs>
-          <linearGradient id={`grad-${label}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.25"/>
+          <linearGradient id={`grad-${label.replace(/\s/g,'')}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.28"/>
             <stop offset="100%" stopColor={color} stopOpacity="0.01"/>
           </linearGradient>
         </defs>
-        {vals.length > 1 && (
+        {hasData && areaPath && (
+          <path d={areaPath} fill={`url(#grad-${label.replace(/\s/g,'')})`}/>
+        )}
+        {hasData && pts && (
           <>
-            <path d={`M${pts.split(' ')[0].split(',')[0]},${H} L${pts.split(' ').join(' L')} L${pts.split(' ')[pts.split(' ').length-1].split(',')[0]},${H} Z`}
-              fill={`url(#grad-${label})`}/>
             <polyline points={pts} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-            {vals.map((v,i)=>{
-              const x = pad + (i / Math.max(vals.length-1,1)) * (W-pad*2)
-              const y = H - pad - ((v/max)*(H-pad*2))
-              return <circle key={i} cx={x} cy={y} r="3" fill={color} opacity={i===vals.length-1?1:0.4}/>
-            })}
+            {points.map(([x,y],i)=>(
+              <circle key={i} cx={x} cy={y} r={i===points.length-1?4:2.5} fill={color} opacity={i===points.length-1?1:0.4}/>
+            ))}
           </>
         )}
-        {vals.length <= 1 && (
+        {!hasData && (
           <text x={W/2} y={H/2} textAnchor="middle" fill="rgba(255,255,255,0.15)" fontSize="12">No data yet</text>
         )}
       </svg>
@@ -283,9 +323,27 @@ function LineGraph({ data, color = '#2563eb', label = 'Views', icon = 'fa-eye', 
   )
 }
 
+function MiniBarChart({ data = [], color = '#2563eb', label = '' }) {
+  const vals = data.map(d => d.views || d.count || d.value || 0)
+  const max = Math.max(...vals, 1)
+  return (
+    <div style={{display:'flex',alignItems:'flex-end',gap:3,height:48,marginTop:8}}>
+      {vals.slice(-14).map((v, i) => (
+        <div key={i} style={{
+          flex:1, borderRadius:'3px 3px 0 0',
+          background: i === vals.slice(-14).length - 1 ? color : `${color}55`,
+          height: `${Math.max(4, (v/max)*100)}%`,
+          transition:'height .3s ease',
+          minWidth:4,
+        }}/>
+      ))}
+    </div>
+  )
+}
+
 function NotifPanel({ notifs, onClose, onMarkRead }) {
   return (
-    <div style={{position:'fixed',top:60,right:16,width:340,background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:14,boxShadow:'0 16px 48px rgba(0,0,0,.5)',zIndex:3000,animation:'fadeScale .18s ease',overflow:'hidden'}}>
+    <div style={{position:'fixed',top:64,right:16,width:340,background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:14,boxShadow:'0 16px 48px rgba(0,0,0,.5)',zIndex:3000,animation:'fadeScale .18s ease',overflow:'hidden'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'13px 16px',borderBottom:'1px solid var(--card-border)'}}>
         <span style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:'.95rem'}}>Notifications</span>
         <div style={{display:'flex',gap:8}}>
@@ -365,8 +423,8 @@ function DiscoverGrid({ onViewPost, onViewProfile }) {
                   {!imgSrc && ft && ft !== 'image' ? (
                     <div style={{width:'100%',height:'100%'}}><FileTypeBadge type={ft} filename={post.original_filename || post.title} /></div>
                   ) : (!imgSrc && <div className="discover-grid-placeholder"><i className="fa-regular fa-image" /></div>)}
-                  {ft && ft !== 'image' && (
-                    <div style={{position:'absolute',top:8,right:8,background:'rgba(0,0,0,0.7)',padding:'2px 8px',borderRadius:20,fontSize:'.68rem',color:(FILE_TYPE_META[ft]||{}).color||'#fff',fontWeight:700,display:'flex',alignItems:'center',gap:4}}>
+                  {ft && ft !== 'image' && ft !== 'art' && ft !== 'gif' && (
+                    <div style={{position:'absolute',top:8,right:8,background:'rgba(0,0,0,0.75)',padding:'2px 8px',borderRadius:20,fontSize:'.68rem',color:(FILE_TYPE_META[ft]||{}).color||'#fff',fontWeight:700,display:'flex',alignItems:'center',gap:4}}>
                       <i className={(FILE_TYPE_META[ft]||{}).icon||'fa-regular fa-file'}/> {(FILE_TYPE_META[ft]||{}).label||ft}
                     </div>
                   )}
@@ -450,11 +508,7 @@ function DiscoverPostModal({ post, onClose, onViewProfile, allPosts = [] }) {
         <button className="discover-modal-close" onClick={onClose}><i className="fa-solid fa-xmark" /></button>
         <div className="discover-modal-left" style={{position:'relative'}}>
           {showViewer && viewerUrl ? (
-            <iframe
-              src={viewerUrl}
-              style={{width:'100%',height:'100%',border:'none',background:'#fff'}}
-              title="Document Viewer"
-            />
+            <iframe src={viewerUrl} style={{width:'100%',height:'100%',border:'none',background:'#fff'}} title="Document Viewer" />
           ) : imgSrc ? (
             <img src={imgSrc} alt={currentPost.title} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{e.target.style.display='none'}}/>
           ) : ft && ft !== 'image' ? (
@@ -464,7 +518,6 @@ function DiscoverPostModal({ post, onClose, onViewProfile, allPosts = [] }) {
           ) : (
             <div style={{width:'100%',height:'100%',background:'linear-gradient(135deg,#1a3a8f,#2563eb44)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'4rem',color:'rgba(255,255,255,0.2)'}}><i className="fa-regular fa-image"/></div>
           )}
-
           {isViewableDoc(currentPost) && (
             <div style={{position:'absolute',bottom:10,left:10,right:10,display:'flex',gap:6,justifyContent:'center'}}>
               <button className="doc-viewer-btn" onClick={()=>setShowViewer(v=>!v)}>
@@ -477,20 +530,11 @@ function DiscoverPostModal({ post, onClose, onViewProfile, allPosts = [] }) {
               )}
             </div>
           )}
-
           <div style={{position:'absolute',top:10,right:10,display:'flex',gap:5}}>
             <span style={{background:'rgba(0,0,0,0.6)',color:'#fff',padding:'2px 8px',borderRadius:20,fontSize:'.7rem'}}><i className="fa-solid fa-eye"/> {currentPost.views||0}</span>
           </div>
-          {prevPost && (
-            <button className="discover-nav-arrow left" onClick={e=>{e.stopPropagation(); goTo(prevPost)}}>
-              <i className="fa-solid fa-chevron-left"/>
-            </button>
-          )}
-          {nextPost && (
-            <button className="discover-nav-arrow right" onClick={e=>{e.stopPropagation(); goTo(nextPost)}}>
-              <i className="fa-solid fa-chevron-right"/>
-            </button>
-          )}
+          {prevPost && <button className="discover-nav-arrow left" onClick={e=>{e.stopPropagation(); goTo(prevPost)}}><i className="fa-solid fa-chevron-left"/></button>}
+          {nextPost && <button className="discover-nav-arrow right" onClick={e=>{e.stopPropagation(); goTo(nextPost)}}><i className="fa-solid fa-chevron-right"/></button>}
         </div>
         <div className="discover-modal-right">
           <div className="discover-modal-header" onClick={()=>onViewProfile(currentPost)} style={{cursor:'pointer'}}>
@@ -718,7 +762,7 @@ function DeleteConfirmModal({ type, onCancel, onConfirm }) {
         </div>
         <div className="modal-body">
           {isPermanent ? (
-            <p style={{color:'var(--red)'}}>Are you sure you want to permanently delete this project? This action <strong>cannot be undone</strong> and the project will be removed forever.</p>
+            <p style={{color:'var(--red)'}}>Are you sure you want to permanently delete this project? This action <strong>cannot be undone</strong>.</p>
           ) : (
             <p style={{color:'var(--text-muted)'}}>Move this project to trash? You can restore it later from the Trash bin.</p>
           )}
@@ -730,6 +774,57 @@ function DeleteConfirmModal({ type, onCancel, onConfirm }) {
       </div>
     </div>
   )
+}
+
+async function generateFigmaThumbnail(data) {
+  return new Promise((resolve) => {
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = 800; canvas.height = 560
+      const ctx = canvas.getContext('2d')
+      const bg = data.bg || '#1a2744'
+      ctx.fillStyle = bg
+      ctx.fillRect(0, 0, 800, 560)
+      const els = data.elements[0] || data.elements['0'] || []
+
+      const drawPromises = els.map(el => new Promise(res => {
+        if (el.type === 'image' && el.src) {
+          const img = new Image()
+          img.crossOrigin = 'anonymous'
+          img.onload = () => {
+            ctx.drawImage(img, el.x, el.y, el.w || 200, el.h || 150)
+            res()
+          }
+          img.onerror = () => res()
+          img.src = el.src
+        } else {
+          res()
+        }
+      }))
+
+      Promise.all(drawPromises).then(() => {
+        els.forEach(el => {
+          if (el.type === 'text') {
+            ctx.fillStyle = el.color || '#fff'
+            ctx.font = `${el.fontWeight || '400'} ${el.fontSize || 20}px ${el.fontFamily || 'Arial'}`
+            ctx.fillText(el.content || '', el.x, el.y + (el.fontSize || 20))
+          } else if (el.type !== 'image' && el.type !== 'line' && el.fill && !el.fill.startsWith('url')) {
+            ctx.fillStyle = el.fill
+            if (el.type === 'circle') {
+              ctx.beginPath()
+              ctx.ellipse((el.x + (el.w||80)/2), (el.y + (el.h||80)/2), (el.w||80)/2, (el.h||80)/2, 0, 0, Math.PI * 2)
+              ctx.fill()
+            } else {
+              ctx.fillRect(el.x, el.y, el.w || 120, el.h || 80)
+            }
+          }
+        })
+        resolve(canvas.toDataURL('image/jpeg', 0.92))
+      })
+    } catch {
+      resolve(null)
+    }
+  })
 }
 
 export default function StudentDashboard() {
@@ -757,6 +852,7 @@ export default function StudentDashboard() {
   const [uploadForm, setUploadForm] = useState(BLANK_UPLOAD)
   const [uploadFb, setUploadFb] = useState('')
   const [uploadGenerating, setUploadGenerating] = useState(false)
+  const [localPreview, setLocalPreview] = useState(null)
   const [showUploadSuccess, setShowUploadSuccess] = useState(false)
   const [editProjectModal, setEditProjectModal] = useState(false)
   const [editingProject, setEditingProject] = useState(null)
@@ -871,8 +967,7 @@ export default function StudentDashboard() {
       if (uploadForm.imageFile) {
         thumbnailDataUrl = await generateThumbnailFromFile(uploadForm.imageFile, uploadForm.fileType)
         if (thumbnailDataUrl) {
-          const blob = await (await fetch(thumbnailDataUrl)).blob()
-          thumbnailFile = new File([blob], `thumbnail_${Date.now()}.jpg`, { type: 'image/jpeg' })
+          thumbnailFile = dataUrlToFile(thumbnailDataUrl, `thumbnail_${Date.now()}.jpg`)
         }
       }
 
@@ -887,7 +982,7 @@ export default function StudentDashboard() {
         deployUrl: uploadForm.deployUrl,
         figmaUrl: uploadForm.figmaUrl,
         adobeUrl: uploadForm.adobeUrl,
-        completion_date: uploadForm.completion_date,
+        completion_date: uploadForm.completion_date || '',
         skills: uploadForm.skills,
         file_type: uploadForm.fileType,
         original_filename: uploadForm.imageFile?.name || '',
@@ -896,6 +991,7 @@ export default function StudentDashboard() {
       setUploadFb('Uploading...')
       await addProject(payload, thumbnailFile || uploadForm.imageFile)
       setUploadForm(BLANK_UPLOAD)
+      setLocalPreview(null)
       setUploadFb('')
       const projs = await getProjects(true); setAllProjects(projs)
       const st = await getStudentStats(); setStats(st)
@@ -907,6 +1003,13 @@ export default function StudentDashboard() {
     } finally {
       setUploadGenerating(false)
     }
+  }
+
+  async function handleFileSelect(file) {
+    setUploadForm(f => ({ ...f, imageFile: file }))
+    if (!file) { setLocalPreview(null); return }
+    const preview = await generateThumbnailFromFile(file, uploadForm.fileType)
+    setLocalPreview(preview)
   }
 
   function openEditProject(p) {
@@ -943,10 +1046,8 @@ export default function StudentDashboard() {
       await updateMe(settingsForm)
       setSettingsFb('✓ Settings saved!')
       setTimeout(() => setSettingsFb(''), 2500)
-      const u = await fetchMe()
-      setUser(u)
+      const u = await fetchMe(); setUser(u)
     } catch (err) {
-      console.error('Settings save error:', err)
       setSettingsFb('⚠ ' + (err.message || 'Failed to save'))
     }
   }
@@ -958,11 +1059,8 @@ export default function StudentDashboard() {
       await saveProfile({ resume_data: resumeData, resume_template: resumeTemplate })
       setResumeFb('✓ Saved!')
       setTimeout(() => setResumeFb(''), 2500)
-      const prof = await getProfile()
-      setProfile(prof)
-      setResumeData(prof.resume_data || {})
+      const prof = await getProfile(); setProfile(prof); setResumeData(prof.resume_data || {})
     } catch (err) {
-      console.error('Resume save error:', err)
       setResumeFb('⚠ ' + (err.message || 'Failed to save'))
     }
   }
@@ -971,22 +1069,12 @@ export default function StudentDashboard() {
     e.preventDefault()
     setAboutFb('Saving...')
     try {
-      await saveProfile({
-        about_bio: aboutData.bio, about_interests: aboutData.interests,
-        about_languages: aboutData.languages, about_github: aboutData.github,
-        about_linkedin: aboutData.linkedin
-      })
+      await saveProfile({ about_bio: aboutData.bio, about_interests: aboutData.interests, about_languages: aboutData.languages, about_github: aboutData.github, about_linkedin: aboutData.linkedin })
       setAboutFb('✓ Saved!')
       setTimeout(() => setAboutFb(''), 2500)
-      const prof = await getProfile()
-      setProfile(prof)
-      setAboutData({
-        bio: prof.about_bio || '', interests: prof.about_interests || '',
-        languages: prof.about_languages || '', github: prof.about_github || '',
-        linkedin: prof.about_linkedin || ''
-      })
+      const prof = await getProfile(); setProfile(prof)
+      setAboutData({ bio: prof.about_bio || '', interests: prof.about_interests || '', languages: prof.about_languages || '', github: prof.about_github || '', linkedin: prof.about_linkedin || '' })
     } catch (err) {
-      console.error('About save error:', err)
       setAboutFb('⚠ ' + (err.message || 'Failed to save'))
     }
   }
@@ -1052,7 +1140,6 @@ export default function StudentDashboard() {
       else { await saveProfile({ avatar_data_url: url }); setProfile(p => ({...p, avatar_data_url: url})) }
       setShowImageModal(null)
     } catch (err) {
-      console.error('Image save error:', err)
       alert('Failed to save image')
     }
   }
@@ -1110,11 +1197,11 @@ export default function StudentDashboard() {
     { q: 'How do I upload a project?', a: 'Go to Upload Project in the sidebar, choose your file type, fill in the project details, and click Upload. The system will automatically generate a thumbnail for you.' },
     { q: 'What file types can I upload?', a: 'You can upload photos, documents (PDF, DOCX), PowerPoint presentations, Canva links, videos, GIFs, code files, and artwork. Each type gets a styled preview automatically.' },
     { q: 'Can I change my portfolio design?', a: 'Yes! Navigate to Portfolio Editor and click "Edit Portfolio" to open the built-in designer. You can also apply admin-created templates from the Templates section.' },
-    { q: 'How do I make a project private?', a: 'When uploading or editing a project, set the Privacy field to "Private". Only you will be able to see it. "Unlisted" makes it visible only with a direct link.' },
+    { q: 'How do I make a project private?', a: 'When uploading or editing a project, set the Privacy field to "Private". Only you will be able to see it.' },
     { q: 'Can other students see my work?', a: 'Public projects appear in the Discover section, visible to all logged-in users. You control visibility per project.' },
     { q: 'How does the analytics page work?', a: 'Analytics tracks your portfolio views over time. The graphs update daily and show trends across the last 7–30 days.' },
-    { q: 'Is my data secure?', a: 'Yes. All data is stored securely on our servers. Passwords are hashed and personal information is encrypted. We do not share your data with third parties.' },
-    { q: 'How do I share my portfolio?', a: 'Go to Share Link in the sidebar. Copy your unique portfolio URL and share it anywhere — social media, email, or your resume.' },
+    { q: 'Is my data secure?', a: 'Yes. All data is stored securely on our servers. Passwords are hashed and personal information is encrypted.' },
+    { q: 'How do I share my portfolio?', a: 'Go to Share Link in the sidebar. Copy your unique portfolio URL and share it anywhere.' },
   ]
   const filteredFaq = faqData.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()))
 
@@ -1123,32 +1210,24 @@ export default function StudentDashboard() {
   if (showFigmaEditor) {
     const handleFigmaSave = async (data) => {
       if (figmaMode === 'project') {
-        const canvas = document.createElement('canvas')
-        canvas.width = 400; canvas.height = 280
-        const ctx = canvas.getContext('2d')
-        ctx.fillStyle = data.bg || '#1a2744'; ctx.fillRect(0, 0, 400, 280)
-        const els = data.elements[0] || data.elements['0'] || []
-        const scaleX = 400/800; const scaleY = 280/560
-        els.forEach(el => {
-          if (el.type === 'text') {
-            ctx.fillStyle = el.color || '#000'
-            ctx.font = `${el.fontWeight || '400'} ${(el.fontSize || 20) * scaleX}px ${el.fontFamily || 'Arial'}`
-            ctx.fillText(el.content || '', el.x * scaleX, (el.y + (el.fontSize || 20)) * scaleY)
-          } else if (el.type === 'image' && el.src) {
-            const img = new Image(); img.src = el.src
-            img.onload = () => { ctx.drawImage(img, el.x * scaleX, el.y * scaleY, el.w * scaleX, el.h * scaleY) }
-          } else if (el.type !== 'line' && el.fill && !el.fill.startsWith('url')) {
-            ctx.fillStyle = el.fill
-            if (el.type === 'circle') { ctx.beginPath(); ctx.ellipse((el.x+el.w/2)*scaleX, (el.y+el.h/2)*scaleY, (el.w/2)*scaleX, (el.h/2)*scaleY, 0, 0, Math.PI*2); ctx.fill() }
-            else { ctx.fillRect(el.x*scaleX, el.y*scaleY, el.w*scaleX, el.h*scaleY) }
-          }
-        })
-        const thumbnail = canvas.toDataURL('image/jpeg', 0.9)
-        const payload = { title: `Design Project ${new Date().toLocaleDateString()}`, description: 'Created with the built-in designer', category: 'Design', status: 'Completed', privacy: 'public', image_url: thumbnail, skills: [], completion_date: new Date().toISOString().split('T')[0], file_type: 'image' }
+        const thumbnail = await generateFigmaThumbnail(data)
+        const payload = {
+          title: `Design Project ${new Date().toLocaleDateString()}`,
+          description: 'Created with the built-in designer',
+          category: 'Design',
+          status: 'Completed',
+          privacy: 'public',
+          image_url: thumbnail || '',
+          skills: [],
+          completion_date: new Date().toISOString().split('T')[0],
+          file_type: 'image',
+        }
         try {
-          const blob = await (await fetch(thumbnail)).blob()
-          const file = new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' })
-          await addProject(payload, file)
+          let thumbFile = null
+          if (thumbnail) {
+            thumbFile = dataUrlToFile(thumbnail, 'thumbnail.jpg')
+          }
+          await addProject(payload, thumbFile)
           const projs = await getProjects(true); setAllProjects(projs)
           const st = await getStudentStats(); setStats(st)
           setShowFigmaEditor(false); setFigmaInitData(null); nav2('projects')
@@ -1250,8 +1329,17 @@ export default function StudentDashboard() {
                 <div className="sd-date-badge"><i className="fa-regular fa-calendar" /> {new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
               </div>
               <div className="sd-stats-grid">
-                {[{icon:'folder',val:stats.projects,label:'Total Projects'},{icon:'eye',val:stats.views,label:'Portfolio Views'},{icon:'link',val:stats.clicks,label:'Link Clicks'},{icon:'star',val:stats.reviews,label:'Reviews'}].map(s=>(
-                  <div className="sd-stat-card" key={s.label}><div className="sd-stat-icon"><i className={`fa-solid fa-${s.icon}`}/></div><div className="sd-stat-val">{s.val}</div><div className="sd-stat-name">{s.label}</div></div>
+                {[
+                  {icon:'folder',val:stats.projects,label:'Total Projects',color:'#3b82f6'},
+                  {icon:'eye',val:stats.views,label:'Portfolio Views',color:'#10b981'},
+                  {icon:'link',val:stats.clicks,label:'Link Clicks',color:'#a78bfa'},
+                  {icon:'star',val:stats.reviews,label:'Reviews',color:'#fbbf24'},
+                ].map(s=>(
+                  <div className="sd-stat-card" key={s.label} style={{borderTop:`3px solid ${s.color}`}}>
+                    <div className="sd-stat-icon" style={{color:s.color}}><i className={`fa-solid fa-${s.icon}`}/></div>
+                    <div className="sd-stat-val">{s.val}</div>
+                    <div className="sd-stat-name">{s.label}</div>
+                  </div>
                 ))}
               </div>
               <div className="sd-card" style={{marginBottom:20}}>
@@ -1268,7 +1356,9 @@ export default function StudentDashboard() {
               </div>
               <div className="sd-alerts-card">
                 <div className="sd-alerts-header"><h3><i className="fa-regular fa-bell"/> Recent Alerts</h3><span className="sd-alerts-badge">{visibleAlerts.length}</span></div>
-                {visibleAlerts.length===0 ? <div className="sd-alerts-empty"><i className="fa-regular fa-bell-slash"/><p>No alerts yet</p><span>Admin notifications appear here</span></div> : (
+                {visibleAlerts.length===0 ? (
+                  <div className="sd-alerts-empty"><i className="fa-regular fa-bell-slash"/><p>No alerts yet</p><span>Admin notifications appear here</span></div>
+                ) : (
                   <div className="sd-alerts-list">
                     {visibleAlerts.map((a,i)=>(
                       <div className="sd-alert-item" key={a.id||i}>
@@ -1413,7 +1503,7 @@ export default function StudentDashboard() {
                   </div>
                   <div className="sd-resume-editor">
                     <div className="sd-resume-preview">
-                      {(()=>{const r=resumeData,tpl=RESUME_TEMPLATES[resumeTemplate];return(<div style={{borderTop:`4px solid ${tpl.color}`,padding:16}}><h2 style={{color:tpl.color,fontFamily:'Syne,sans-serif',marginBottom:4}}>{r.name||'Your Name'}</h2><p style={{color:'var(--text-muted)',fontSize:'.84rem',marginBottom:12}}>{r.role||'Student'}{r.email?` · ${r.email}`:''}{r.phone?` · ${r.phone}`:''}</p>{r.address&&<p style={{color:'var(--text-muted)',fontSize:'.8rem',marginBottom:12}}>📍 {r.address}</p>}{r.summary&&<div style={{background:'rgba(255,255,255,.04)',borderLeft:`3px solid ${tpl.color}`,padding:10,borderRadius:4,marginBottom:14,fontSize:'.86rem'}}>{r.summary}</div>}{r.skills&&<div style={{marginBottom:14}}><strong style={{color:tpl.color,fontSize:'.78rem',textTransform:'uppercase'}}>Skills</strong><div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>{r.skills.split(',').map(s=><span key={s} style={{background:'rgba(37,99,235,.15)',border:'1px solid rgba(37,99,235,.25)',padding:'2px 10px',borderRadius:20,fontSize:'.76rem'}}>{s.trim()}</span>)}</div></div>}{r.edu&&<div style={{marginBottom:12}}><strong style={{color:tpl.color,fontSize:'.78rem',textTransform:'uppercase'}}>Education</strong><p style={{marginTop:6,fontSize:'.86rem',whiteSpace:'pre-line'}}>{r.edu}</p></div>}{r.exp&&<div style={{marginBottom:12}}><strong style={{color:tpl.color,fontSize:'.78rem',textTransform:'uppercase'}}>Experience</strong><p style={{marginTop:6,fontSize:'.86rem',whiteSpace:'pre-line'}}>{r.exp}</p></div>}</div>)})()}
+                      {(()=>{const r=resumeData,tpl=RESUME_TEMPLATES[resumeTemplate];return(<div style={{borderTop:`4px solid ${tpl.color}`,padding:16}}><h2 style={{color:tpl.color,fontFamily:'Syne,sans-serif',marginBottom:4}}>{r.name||'Your Name'}</h2><p style={{color:'var(--text-muted)',fontSize:'.84rem',marginBottom:12}}>{r.role||'Student'}{r.email?` · ${r.email}`:''}{r.phone?` · ${r.phone}`:''}</p>{r.summary&&<div style={{background:'rgba(255,255,255,.04)',borderLeft:`3px solid ${tpl.color}`,padding:10,borderRadius:4,marginBottom:14,fontSize:'.86rem'}}>{r.summary}</div>}{r.skills&&<div style={{marginBottom:14}}><strong style={{color:tpl.color,fontSize:'.78rem',textTransform:'uppercase'}}>Skills</strong><div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>{r.skills.split(',').map(s=><span key={s} style={{background:'rgba(37,99,235,.15)',border:'1px solid rgba(37,99,235,.25)',padding:'2px 10px',borderRadius:20,fontSize:'.76rem'}}>{s.trim()}</span>)}</div></div>}{r.edu&&<div style={{marginBottom:12}}><strong style={{color:tpl.color,fontSize:'.78rem',textTransform:'uppercase'}}>Education</strong><p style={{marginTop:6,fontSize:'.86rem',whiteSpace:'pre-line'}}>{r.edu}</p></div>}{r.exp&&<div><strong style={{color:tpl.color,fontSize:'.78rem',textTransform:'uppercase'}}>Experience</strong><p style={{marginTop:6,fontSize:'.86rem',whiteSpace:'pre-line'}}>{r.exp}</p></div>}</div>)})()}
                     </div>
                     <form className="sd-resume-fields" onSubmit={saveResume}>
                       <h4>Personal Information</h4>
@@ -1505,7 +1595,7 @@ export default function StudentDashboard() {
                   <p style={{fontSize:'.78rem',color:'var(--text-dim)',marginBottom:12}}>A preview thumbnail will be auto-generated from your upload.</p>
                   <div className="upload-type-grid">
                     {UPLOAD_TYPES.map(t => (
-                      <button type="button" key={t.key} className={`upload-type-btn${uploadForm.fileType===t.key?' active':''}`} onClick={()=>setUploadForm(f=>({...f,fileType:t.key,imageFile:null}))}>
+                      <button type="button" key={t.key} className={`upload-type-btn${uploadForm.fileType===t.key?' active':''}`} onClick={()=>{ setUploadForm(f=>({...f,fileType:t.key,imageFile:null})); setLocalPreview(null) }}>
                         <i className={t.icon}/><span>{t.label}</span>
                       </button>
                     ))}
@@ -1521,11 +1611,25 @@ export default function StudentDashboard() {
                         <label>Upload {selectedUploadType.label}</label>
                         <label className="sd-file-upload-btn">
                           <i className={selectedUploadType.icon}/> {uploadForm.imageFile?uploadForm.imageFile.name:`Choose ${selectedUploadType.label}`}
-                          <input type="file" accept={selectedUploadType.accept} style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(!f)return;setUploadForm(uf=>({...uf,imageFile:f}))}}/>
+                          <input type="file" accept={selectedUploadType.accept} style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(!f)return;handleFileSelect(f)}}/>
                         </label>
-                        {uploadForm.imageFile && (
+                        {localPreview && (
+                          <div style={{marginTop:12,borderRadius:10,overflow:'hidden',border:'1px solid var(--card-border)'}}>
+                            <div style={{fontSize:'.74rem',color:'var(--text-dim)',padding:'6px 12px',background:'rgba(255,255,255,.03)',borderBottom:'1px solid var(--card-border)',display:'flex',alignItems:'center',gap:6}}>
+                              <i className="fa-solid fa-circle-check" style={{color:'var(--green)'}}/> Preview — {uploadForm.imageFile?.name}
+                            </div>
+                            {(uploadForm.fileType === 'image' || uploadForm.fileType === 'art' || uploadForm.fileType === 'gif') ? (
+                              <img src={localPreview} alt="preview" style={{width:'100%',maxHeight:220,objectFit:'cover',display:'block'}} />
+                            ) : (
+                              <div style={{height:140,position:'relative'}}>
+                                <img src={localPreview} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {uploadForm.imageFile && !localPreview && (
                           <div style={{marginTop:8,padding:'8px 12px',background:'rgba(37,99,235,.08)',borderRadius:8,fontSize:'.78rem',color:'var(--accent-light)',display:'flex',alignItems:'center',gap:6}}>
-                            <i className="fa-solid fa-circle-check"/> {uploadForm.imageFile.name} — thumbnail will be auto-generated
+                            <i className="fa-solid fa-spinner fa-spin"/> Generating preview...
                           </div>
                         )}
                       </>
@@ -1596,16 +1700,11 @@ export default function StudentDashboard() {
                         <div className="sd-project-card" key={p.id||i} onClick={()=>incrementProjectViews(p.id)} style={{cursor:'pointer'}}>
                           <div className="sd-project-thumb">
                             <ProjectThumb p={p} />
-                            <div className="sd-pv-views-badge">
-                              <i className="fa-solid fa-eye"/> {p.views || 0}
-                            </div>
+                            <div className="sd-pv-views-badge"><i className="fa-solid fa-eye"/> {p.views || 0}</div>
                           </div>
                           <div className="sd-project-info">
                             <div className="sd-project-title">{p.title}</div>
                             <div className="sd-project-cat">{p.category}</div>
-                            <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap'}}>
-                              {p.skills&&p.skills.slice(0,2).map(s=><span key={s} className="sd-skill-pill">{s}</span>)}
-                            </div>
                           </div>
                         </div>
                       ))}
@@ -1618,62 +1717,84 @@ export default function StudentDashboard() {
 
           {section === 'analytics' && (
             <div className="sd-section">
-              <div className="sd-section-header"><div><h2 className="sd-section-title">Analytics</h2><p className="sd-section-sub">Track your portfolio performance over time</p></div></div>
-
+              <div className="sd-section-header">
+                <div>
+                  <h2 className="sd-section-title">Analytics</h2>
+                  <p className="sd-section-sub">Track your portfolio performance over time</p>
+                </div>
+              </div>
               <div className="sd-stats-grid" style={{marginBottom:24}}>
                 {[
-                  {icon:'eye',val:stats.views,label:'Total Views',color:'#3b82f6'},
-                  {icon:'folder',val:stats.projects,label:'Projects',color:'#10b981'},
-                  {icon:'heart',val:stats.total_likes||0,label:'Total Likes',color:'#f87171'},
-                  {icon:'comment',val:stats.total_comments||0,label:'Comments',color:'#a855f7'},
+                  {icon:'eye',val:stats.views||0,label:'Total Views',color:'#3b82f6',sub:`+${(stats.views_by_day||[]).slice(-1)[0]?.views||0} today`},
+                  {icon:'folder',val:stats.projects||0,label:'Projects',color:'#10b981',sub:'All time'},
+                  {icon:'heart',val:stats.total_likes||0,label:'Total Likes',color:'#f87171',sub:'Across all projects'},
+                  {icon:'comment',val:stats.total_comments||0,label:'Comments',color:'#a855f7',sub:'Received'},
                 ].map(s=>(
                   <div className="sd-stat-card" key={s.label} style={{borderTop:`3px solid ${s.color}`}}>
                     <div className="sd-stat-icon" style={{color:s.color}}><i className={`fa-solid fa-${s.icon}`}/></div>
-                    <div className="sd-stat-val">{s.val}</div>
+                    <div className="sd-stat-val" style={{color:s.color}}>{s.val.toLocaleString()}</div>
                     <div className="sd-stat-name">{s.label}</div>
+                    <div style={{fontSize:'.72rem',color:'var(--text-dim)',marginTop:3}}>{s.sub}</div>
                   </div>
                 ))}
               </div>
-
+              {(stats.views||0) > 0 && (
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
+                  {[
+                    { label:'Most Active Day', val: (() => { const d = (stats.views_by_day||[]); if (!d.length) return '—'; const max = d.reduce((a,b)=>(a.views||0)>(b.views||0)?a:b,{}); return max.date ? new Date(max.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—' })(), icon:'fa-fire', color:'#f97316' },
+                    { label:'7-day avg views', val: (() => { const v = (stats.views_by_day||[]).slice(-7).map(d=>d.views||0); return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length) : 0 })(), icon:'fa-chart-bar', color:'#3b82f6' },
+                    { label:'Projects this month', val: (stats.projects_by_day||[]).filter(d=>{ try { return new Date(d.date).getMonth()===new Date().getMonth() } catch { return false } }).reduce((a,b)=>a+(b.count||0),0), icon:'fa-folder-plus', color:'#10b981' },
+                  ].map((item,i)=>(
+                    <div key={i} style={{background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:12}}>
+                      <div style={{width:40,height:40,borderRadius:10,background:`${item.color}18`,display:'flex',alignItems:'center',justifyContent:'center',color:item.color,fontSize:'1.1rem',flexShrink:0}}>
+                        <i className={`fa-solid ${item.icon}`}/>
+                      </div>
+                      <div>
+                        <div style={{fontFamily:'var(--font-display)',fontSize:'1.3rem',fontWeight:800,color:item.color}}>{item.val}</div>
+                        <div style={{fontSize:'.72rem',color:'var(--text-dim)'}}>{item.label}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="analytics-graphs-grid">
-                <LineGraph
-                  data={stats.views_by_day || []}
-                  color="#3b82f6"
-                  label="Portfolio Views"
-                  icon="fa-eye"
-                  total={stats.views || 0}
-                  sub="Last 7 days"
-                />
-                <LineGraph
-                  data={stats.projects_by_day || []}
-                  color="#10b981"
-                  label="Projects Uploaded"
-                  icon="fa-folder"
-                  total={stats.projects || 0}
-                  sub="All time"
-                />
-                <LineGraph
-                  data={stats.likes_by_day || []}
-                  color="#f87171"
-                  label="Likes Received"
-                  icon="fa-heart"
-                  total={stats.total_likes || 0}
-                  sub="Last 7 days"
-                />
-                <LineGraph
-                  data={stats.comments_by_day || []}
-                  color="#a855f7"
-                  label="Comments"
-                  icon="fa-comment"
-                  total={stats.total_comments || 0}
-                  sub="Last 7 days"
-                />
+                <LineGraph data={stats.views_by_day || []} color="#3b82f6" label="Portfolio Views" icon="fa-eye" total={stats.views || 0} sub="Last 7 days" />
+                <LineGraph data={stats.projects_by_day || []} color="#10b981" label="Projects Uploaded" icon="fa-folder" total={stats.projects || 0} sub="All time" />
+                <LineGraph data={stats.likes_by_day || []} color="#f87171" label="Likes Received" icon="fa-heart" total={stats.total_likes || 0} sub="Last 7 days" />
+                <LineGraph data={stats.comments_by_day || []} color="#a855f7" label="Comments" icon="fa-comment" total={stats.total_comments || 0} sub="Last 7 days" />
               </div>
-
-              {(!stats.views_by_day || stats.views_by_day.length === 0) && (
-                <div className="sd-card" style={{textAlign:'center',padding:'40px',marginTop:16}}>
-                  <i className="fa-solid fa-chart-line" style={{fontSize:'2.5rem',opacity:.3,marginBottom:12,display:'block'}}/>
-                  <p style={{color:'var(--text-muted)'}}>No data yet. Share your portfolio to start tracking!</p>
+              {(stats.views_by_day||[]).length > 0 && (
+                <div style={{background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:14,padding:'20px 22px',marginTop:0}}>
+                  <h3 style={{fontFamily:'var(--font-display)',fontSize:'1rem',fontWeight:700,marginBottom:4}}>Daily Activity — Last 14 Days</h3>
+                  <p style={{fontSize:'.78rem',color:'var(--text-dim)',marginBottom:16}}>Bar height = views on that day</p>
+                  <div style={{display:'flex',alignItems:'flex-end',gap:4,height:80}}>
+                    {(stats.views_by_day||[]).slice(-14).map((d,i,arr)=>{
+                      const v = d.views || 0
+                      const max = Math.max(...arr.map(x=>x.views||0),1)
+                      const isLast = i === arr.length - 1
+                      return (
+                        <div key={i} title={`${d.date}: ${v} views`} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+                          <div style={{width:'100%',background:isLast?'#3b82f6':'rgba(59,130,246,0.4)',borderRadius:'4px 4px 0 0',height:`${Math.max(4,(v/max)*72)}px`,transition:'height .4s ease',cursor:'default',minWidth:8}}/>
+                          <span style={{fontSize:'.52rem',color:'var(--text-dim)',whiteSpace:'nowrap'}}>{(d.date||'').slice(5)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {!(stats.views_by_day||[]).length && (
+                <div style={{background:'var(--card-bg)',border:'1px solid var(--card-border)',borderRadius:14,padding:'48px 32px',textAlign:'center',marginTop:0}}>
+                  <div style={{width:64,height:64,borderRadius:'50%',background:'rgba(59,130,246,0.1)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',fontSize:'1.8rem',color:'#3b82f6'}}>
+                    <i className="fa-solid fa-chart-line"/>
+                  </div>
+                  <h3 style={{fontFamily:'var(--font-display)',fontSize:'1.1rem',fontWeight:700,marginBottom:8}}>No Analytics Data Yet</h3>
+                  <p style={{color:'var(--text-muted)',fontSize:'.86rem',maxWidth:360,margin:'0 auto 20px'}}>
+                    Start uploading projects and sharing your portfolio link to begin tracking views, likes, and engagement.
+                  </p>
+                  <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
+                    <button className="btn-primary" onClick={()=>nav2('upload')}><i className="fa-solid fa-cloud-arrow-up"/> Upload Project</button>
+                    <button className="btn-outline" onClick={()=>nav2('share')}><i className="fa-solid fa-link"/> Get Share Link</button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1729,118 +1850,42 @@ export default function StudentDashboard() {
                       {settingsFb&&<div className="save-feedback">{settingsFb}</div>}
                     </form>
                   )}
-
                   {settingsOpenSection === 'terms' && (
                     <div className="sd-legal-doc">
-                      <div className="sd-legal-header">
-                        <i className="fa-regular fa-file-lines sd-legal-icon"/>
-                        <div>
-                          <h2>Terms of Service</h2>
-                          <p>Last updated: May 2026</p>
-                        </div>
-                      </div>
+                      <div className="sd-legal-header"><i className="fa-regular fa-file-lines sd-legal-icon"/><div><h2>Terms of Service</h2><p>Last updated: May 2026</p></div></div>
                       <div className="sd-legal-body">
-                        <p>Welcome to the <strong>Student Digital Portfolio Management System (SDMS)</strong>. By accessing or using this platform, you agree to be bound by these Terms of Service. Please read them carefully before using the service.</p>
-
-                        <h4>1. Acceptance of Terms</h4>
-                        <p>By creating an account or using any features of SDMS, you confirm that you have read, understood, and agreed to these Terms. If you do not agree, please discontinue use of the platform immediately.</p>
-
-                        <h4>2. Eligibility</h4>
-                        <p>SDMS is intended for enrolled students and authorized faculty/administrators of the institution. Accounts are issued on a per-user basis and are non-transferable. You must be at least 13 years of age or have appropriate parental consent to use this platform.</p>
-
-                        <h4>3. User Accounts</h4>
-                        <p>You are responsible for maintaining the confidentiality of your login credentials. You agree to notify the administrator immediately of any unauthorized access to your account. The institution reserves the right to suspend or terminate accounts that violate these Terms.</p>
-
-                        <h4>4. Acceptable Use</h4>
-                        <p>You agree not to use SDMS to: upload content that is offensive, defamatory, or infringing on third-party rights; attempt to gain unauthorized access to other users' accounts; distribute malware, spam, or harmful code; impersonate another person or entity; or violate any applicable local, national, or international law.</p>
-
-                        <h4>5. Intellectual Property</h4>
-                        <p>You retain full ownership of the academic and creative works you upload. By uploading content, you grant SDMS a limited, non-exclusive license to display your work within the platform for portfolio and educational purposes. You may remove your content at any time.</p>
-
-                        <h4>6. Privacy</h4>
-                        <p>Your use of SDMS is also governed by our Privacy Policy. We collect only the information necessary to operate the platform and do not sell your data to third parties.</p>
-
-                        <h4>7. Disclaimer of Warranties</h4>
-                        <p>SDMS is provided "as is" without warranties of any kind. We do not guarantee uninterrupted access or error-free operation. We are not liable for any loss of data or interruption of service.</p>
-
-                        <h4>8. Modifications</h4>
-                        <p>We reserve the right to update these Terms at any time. Continued use of the platform after changes are posted constitutes acceptance of the updated Terms.</p>
-
-                        <h4>9. Contact</h4>
-                        <p>For questions regarding these Terms, please contact your system administrator or the SDMS support team.</p>
+                        <p>Welcome to the <strong>Student Digital Portfolio Management System (SDMS)</strong>. By accessing or using this platform, you agree to be bound by these Terms of Service.</p>
+                        <h4>1. Acceptance of Terms</h4><p>By creating an account or using any features of SDMS, you confirm that you have read, understood, and agreed to these Terms.</p>
+                        <h4>2. Eligibility</h4><p>SDMS is intended for enrolled students and authorized faculty/administrators of the institution.</p>
+                        <h4>3. User Accounts</h4><p>You are responsible for maintaining the confidentiality of your login credentials.</p>
+                        <h4>4. Acceptable Use</h4><p>You agree not to upload content that is offensive, defamatory, or infringing on third-party rights.</p>
+                        <h4>5. Intellectual Property</h4><p>You retain full ownership of the academic and creative works you upload.</p>
                       </div>
                     </div>
                   )}
-
                   {settingsOpenSection === 'privacy' && (
                     <div className="sd-legal-doc">
-                      <div className="sd-legal-header">
-                        <i className="fa-regular fa-shield sd-legal-icon"/>
-                        <div>
-                          <h2>Privacy Policy</h2>
-                          <p>Last updated: May 2026</p>
-                        </div>
-                      </div>
+                      <div className="sd-legal-header"><i className="fa-regular fa-shield sd-legal-icon"/><div><h2>Privacy Policy</h2><p>Last updated: May 2026</p></div></div>
                       <div className="sd-legal-body">
-                        <p>This Privacy Policy explains how <strong>SDMS</strong> collects, uses, stores, and protects your personal information when you use our platform.</p>
-
-                        <h4>1. Information We Collect</h4>
-                        <p>We collect information you provide directly, including your name, email address, date of birth, academic program, and any content you upload (projects, portfolio designs, resume data). We also collect usage data such as login times, page visits, and interaction logs to improve the platform.</p>
-
-                        <h4>2. How We Use Your Information</h4>
-                        <p>Your data is used to: operate and personalize your portfolio experience; display your public projects to other users when you opt in; send you administrative notifications and announcements; monitor platform health and security; and generate anonymized usage statistics for institutional reporting.</p>
-
-                        <h4>3. Data Sharing</h4>
-                        <p>We do not sell, rent, or trade your personal information to any third party. Your data may be shared with system administrators of the institution for academic oversight purposes only. We do not integrate third-party advertising networks.</p>
-
-                        <h4>4. Data Storage and Security</h4>
-                        <p>All data is stored on secured servers. Passwords are hashed using industry-standard algorithms and are never stored in plaintext. Media files are stored with access controls. We implement regular security audits and vulnerability checks.</p>
-
-                        <h4>5. Your Rights</h4>
-                        <p>You have the right to: access the personal data we hold about you; request correction of inaccurate information; request deletion of your account and associated data; and withdraw consent for optional data processing at any time.</p>
-
-                        <h4>6. Cookies</h4>
-                        <p>SDMS uses session cookies necessary for authentication and platform functionality. We do not use tracking or advertising cookies.</p>
-
-                        <h4>7. Data Retention</h4>
-                        <p>Your data is retained for the duration of your enrollment or until account deletion is requested. Deleted accounts are purged from our systems within 30 days, except where retention is required by institutional policy or law.</p>
-
-                        <h4>8. Contact</h4>
-                        <p>For privacy-related concerns or data requests, please contact your system administrator.</p>
+                        <p>This Privacy Policy explains how <strong>SDMS</strong> collects, uses, stores, and protects your personal information.</p>
+                        <h4>1. Information We Collect</h4><p>We collect information you provide directly, including your name, email address, and any content you upload.</p>
+                        <h4>2. How We Use Your Information</h4><p>Your data is used to operate and personalize your portfolio experience.</p>
+                        <h4>3. Data Sharing</h4><p>We do not sell, rent, or trade your personal information to any third party.</p>
+                        <h4>4. Data Storage and Security</h4><p>All data is stored on secured servers. Passwords are hashed using industry-standard algorithms.</p>
                       </div>
                     </div>
                   )}
-
                   {settingsOpenSection === 'about' && (
                     <div className="sd-legal-doc">
-                      <div className="sd-legal-header">
-                        <i className="fa-regular fa-circle-info sd-legal-icon"/>
-                        <div>
-                          <h2>About SDMS</h2>
-                          <p>Student Digital Portfolio Management System</p>
-                        </div>
-                      </div>
+                      <div className="sd-legal-header"><i className="fa-regular fa-circle-info sd-legal-icon"/><div><h2>About SDMS</h2><p>Student Digital Portfolio Management System</p></div></div>
                       <div className="sd-legal-body">
-                        <p>The <strong>Student Digital Portfolio Management System (SDMS)</strong> is a web-based platform designed to help students document, showcase, and manage their academic and creative works throughout their academic journey.</p>
-
-                        <h4>Purpose</h4>
-                        <p>SDMS bridges the gap between academic output and professional presentation, enabling students to build a curated digital portfolio that reflects their skills, growth, and achievements — all in one place.</p>
-
-                        <h4>Key Features</h4>
-                        <p>Portfolio Designer with a built-in Figma-like canvas editor. Multi-format project uploads including images, documents, presentations, code, and video. A Discover section to explore and engage with other students' work. Analytics dashboard for tracking portfolio performance. Resume builder with multiple professional templates. Admin-created portfolio templates. Role-based access for Students and Administrators.</p>
-
-                        <h4>Technology</h4>
-                        <p>SDMS is built with React and Vite on the frontend, powered by a Django REST API backend. File storage, authentication, and real-time notifications are handled server-side.</p>
-
-                        <h4>Version</h4>
-                        <p>Version 1.0.0 — Academic Year 2025–2026. Developed as a capstone project for the BSIT program.</p>
-
-                        <h4>Support</h4>
-                        <p>For technical issues or feedback, please reach out to your class administrator or submit a review through the Leave a Review section.</p>
+                        <p>The <strong>Student Digital Portfolio Management System (SDMS)</strong> is a web-based platform designed to help students document, showcase, and manage their academic and creative works.</p>
+                        <h4>Purpose</h4><p>SDMS bridges the gap between academic output and professional presentation.</p>
+                        <h4>Technology</h4><p>SDMS is built with React and Vite on the frontend, powered by a Django REST API backend.</p>
+                        <h4>Version</h4><p>Version 1.0.0 — Academic Year 2025–2026. Developed as a capstone project for the BSIT program.</p>
                       </div>
                     </div>
                   )}
-
                   {settingsOpenSection === 'faq' && (
                     <div className="sd-card">
                       <h3 style={{fontFamily:'var(--font-display)',marginBottom:16}}>Frequently Asked Questions</h3>
@@ -1851,23 +1896,14 @@ export default function StudentDashboard() {
                       <div style={{display:'flex',flexDirection:'column',gap:8}}>
                         {filteredFaq.map((f,i)=>(
                           <details key={i} className="sd-faq-item">
-                            <summary className="sd-faq-question">
-                              <i className="fa-solid fa-chevron-right sd-faq-chevron"/>
-                              {f.q}
-                            </summary>
+                            <summary className="sd-faq-question"><i className="fa-solid fa-chevron-right sd-faq-chevron"/>{f.q}</summary>
                             <p className="sd-faq-answer">{f.a}</p>
                           </details>
                         ))}
                         {filteredFaq.length === 0 && <div style={{textAlign:'center',color:'var(--text-dim)',padding:'24px 0',fontSize:'.86rem'}}>No matching questions found.</div>}
                       </div>
-                      <div style={{marginTop:24,paddingTop:20,borderTop:'1px solid var(--card-border)'}}>
-                        <h4 style={{fontFamily:'var(--font-display)',marginBottom:12,fontSize:'.95rem'}}>Still have a question?</h4>
-                        <textarea placeholder="Type your question or feedback here..." rows={3} style={{width:'100%',marginBottom:10}}/>
-                        <button className="btn-primary"><i className="fa-solid fa-paper-plane"/> Submit</button>
-                      </div>
                     </div>
                   )}
-
                   {settingsOpenSection === 'review' && (
                     <div className="sd-card">
                       <h3 style={{fontFamily:'var(--font-display)',marginBottom:6}}>Rate Your Experience</h3>
@@ -1879,9 +1915,7 @@ export default function StudentDashboard() {
                             <i key={s} className={`fa-${s<=reviewRating?'solid':'regular'} fa-star`} style={{color:'#fbbf24',fontSize:'1.8rem',cursor:'pointer',transition:'transform .1s'}} onClick={()=>setReviewRating(s)} onMouseEnter={e=>e.currentTarget.style.transform='scale(1.2)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}/>
                           ))}
                         </div>
-                        {reviewRating > 0 && <p style={{marginTop:8,fontSize:'.8rem',color:'var(--accent-light)'}}>
-                          {['','😞 Poor','😕 Fair','😊 Good','😄 Very Good','🤩 Excellent!'][reviewRating]}
-                        </p>}
+                        {reviewRating > 0 && <p style={{marginTop:8,fontSize:'.8rem',color:'var(--accent-light)'}}>{['','😞 Poor','😕 Fair','😊 Good','😄 Very Good','🤩 Excellent!'][reviewRating]}</p>}
                       </div>
                       <div className="field-group">
                         <label>Your Comments</label>
@@ -1892,7 +1926,7 @@ export default function StudentDashboard() {
                       </button>
                       {showReviewThanks && (
                         <div style={{marginTop:14,padding:'12px 16px',background:'rgba(74,222,128,.08)',border:'1px solid rgba(74,222,128,.2)',borderRadius:10,color:'var(--green)',fontSize:'.86rem',display:'flex',alignItems:'center',gap:8}}>
-                          <i className="fa-solid fa-circle-check"/> Thank you! Your feedback has been submitted. We appreciate it ❤️
+                          <i className="fa-solid fa-circle-check"/> Thank you! Your feedback has been submitted. ❤️
                         </div>
                       )}
                     </div>
@@ -1997,9 +2031,9 @@ export default function StudentDashboard() {
             <div className="modal-header"><h3>Edit Project</h3><button className="modal-close" onClick={()=>setEditProjectModal(false)}><i className="fa-solid fa-xmark"/></button></div>
             <form onSubmit={saveEditProject}>
               <div className="modal-body">
-                {editProjectForm.effective_image && (
-                  <div style={{marginBottom:14,borderRadius:10,overflow:'hidden',height:180}}>
-                    <img src={editProjectForm.effective_image} alt="preview" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} onError={e=>e.target.style.display='none'} />
+                {(editProjectForm.effective_image || editProjectForm.image_url) && (
+                  <div style={{marginBottom:14,borderRadius:10,overflow:'hidden',height:180,background:'var(--card-bg2)'}}>
+                    <ProjectThumb p={editProjectForm} />
                   </div>
                 )}
                 <div className="field-group"><label>Title *</label><input value={editProjectForm.title||''} onChange={e=>setEditProjectForm(f=>({...f,title:e.target.value}))}/></div>
