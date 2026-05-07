@@ -19,7 +19,12 @@ class Command(BaseCommand):
             Profile.objects.get_or_create(owner=admin)
             self.stdout.write(self.style.SUCCESS('Admin created: admin@sdpms.edu / Admin@2026'))
         else:
-            self.stdout.write('Admin already exists.')
+            admin = User.objects.get(email='admin@sdpms.edu')
+            admin.set_password('Admin@2026')
+            admin.is_staff = True
+            admin.is_superuser = True
+            admin.save()
+            self.stdout.write(self.style.SUCCESS('Admin password reset.'))
 
         defaults = [
             {'name': 'Arts',        'icon': 'fa-solid fa-palette',     'desc': 'Visual & creative arts'},
