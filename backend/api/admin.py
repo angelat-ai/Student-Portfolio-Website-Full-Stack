@@ -6,9 +6,9 @@ class Command(BaseCommand):
     help = 'Seeds the database with the admin account and default categories'
 
     def handle(self, *args, **kwargs):
-        if not User.objects.filter(email='admin@sdpms.edu').exists():
+        if not User.objects.filter(email='admin@sdpms.com').exists():
             admin = User.objects.create_superuser(
-                email='admin@sdpms.edu',
+                email='admin@sdpms.com',
                 password='Admin@2026',
                 name='System Admin',
                 role='admin',
@@ -17,9 +17,9 @@ class Command(BaseCommand):
             admin.is_superuser = True
             admin.save()
             Profile.objects.get_or_create(owner=admin)
-            self.stdout.write(self.style.SUCCESS('Admin created: admin@sdpms.edu / Admin@2026'))
+            self.stdout.write(self.style.SUCCESS('Admin created: admin@sdpms.com / Admin@2026'))
         else:
-            admin = User.objects.get(email='admin@sdpms.edu')
+            admin = User.objects.get(email='admin@sdpms.com')
             admin.set_password('Admin@2026')
             admin.is_staff = True
             admin.is_superuser = True
